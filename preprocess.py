@@ -38,7 +38,7 @@ def build_pipeline(parser: Parser) -> spacy.Language:
 
 
 @app.command()
-def preprocess(text_file_paths: List[str], out_file_path: str, title: Optional[str] = None, gpu: bool = False, parser: Parser = Parser.SPACY):
+def preprocess(text_file_paths: List[str], out_file_path: str, title: Optional[str] = None, gpu: bool = False, parser: Parser = typer.Option(Parser.SPACY)):
     """
     Segment a set document into event spans based on verb occurrences.
 
@@ -76,7 +76,7 @@ def preprocess(text_file_paths: List[str], out_file_path: str, title: Optional[s
 
 
 @app.command()
-def spans(input_sentence: str, display: bool = False, parser: Parser = Parser.SPACY):
+def spans(input_sentence: str, display: bool = False, parser: Parser = typer.Option(Parser.SPACY)):
     nlp = build_pipeline(parser)
     doc = nlp(input_sentence)
     if display:
@@ -90,7 +90,7 @@ def spans(input_sentence: str, display: bool = False, parser: Parser = Parser.SP
 
 
 @app.command()
-def eval(parser: Parser = Parser.SPACY):
+def eval(parser: Parser = typer.Option(Parser.SPACY)):
     """
     Evaluate segmentation outputs.
     """
