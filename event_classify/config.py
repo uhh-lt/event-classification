@@ -13,6 +13,15 @@ class DatasetConfig():
 
 
 @dataclass
+class SchedulerConfig():
+    """
+    Configuration for the learning rate scheduler.
+    """
+    enable: bool
+    # The number of epochs to scale the learning rate scheduler over
+    epochs: int
+
+@dataclass
 class Config():
     """
     Config for the entire program, holding hyperparameters etc.
@@ -20,10 +29,10 @@ class Config():
     device: str
     optimize: str
     epochs: int
-    # The number of epochs to scale the learning rate scheduler over
-    lr_scheduler_epochs: int
     batch_size: int
     learning_rate: float
     patience: int
+    scheduler: SchedulerConfig
     dataset: DatasetConfig
     pretrained_model: str
+    label_smoothing: bool

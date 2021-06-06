@@ -1,14 +1,14 @@
-# learning_rate: 0.001
-learning_rate: 0.0001
-patience: 5
-batch_size: 8
-# batch_size: 16
+learning_rate: 0.005
+patience: 10
+batch_size: 32
 epochs: 30
-lr_scheduler_epochs: 30
+scheduler:
+    enable: true
+    epochs: 30
 device: "cuda:0"
+label_smoothing: false
 optimize: "weighted f1"
-pretrained_model: "deepset/gelectra-base"
-# pretrained_model: "german-nlp-group/electra-base-german-uncased"
+pretrained_model: "german-nlp-group/electra-base-german-uncased"
 dataset:
     catma_uuid: "CATMA_DD5E9DF1-0F5C-4FBD-B333-D507976CA3C7_EvENT_root"
     catma_dir: "."
