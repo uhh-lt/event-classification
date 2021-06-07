@@ -9,7 +9,7 @@ class DatasetConfig():
     """
     catma_uuid: str
     catma_dir: str
-    in_domain: bool
+    in_distribution: bool
 
 
 @dataclass

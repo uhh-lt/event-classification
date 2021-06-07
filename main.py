@@ -93,7 +93,7 @@ def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
         config.catma_uuid,
         filter_intrinsic_markup=False,
     )
-    if config.in_domain:
+    if config.in_distribution:
         dataset = SimpleEventDataset(
             project, ["Verwandlung_MV", "Krambambuli_MW", "Effi_Briest_MW"]
         )
@@ -107,15 +107,20 @@ def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
             generator=torch.Generator().manual_seed(13),
         )
     else:
-        train_dataset = SimpleEventDataset(
+        in_distribution_dataset = SimpleEventDataset(
             project, ["Effi_Briest_MW", "Krambambuli_MW"]
+        )
+        train_size = math.floor(len(in_distribution_dataset) * 0.9)
+        dev_size = len(in_distribution_dataset) - train_size
+        train_dataset, dev_dataset = random_split(
+            in_distribution_dataset,
+            [train_size, dev_size],
+            generator=torch.Generator().manual_seed(13),
         )
         test_dataset = SimpleEventDataset(
             project,
             ["Verwandlung_MV"],
         )
-        dev_dataset = None
-
     return train_dataset, dev_dataset, test_dataset
 
 
