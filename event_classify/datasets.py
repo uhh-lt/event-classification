@@ -201,7 +201,7 @@ class JSONDataset(Dataset):
             }
             for annotation in document:
                 if out_doc["text"] is None:
-                    out_doc["text"] = annotation.text
+                    out_doc["text"] = annotation.document_text
                 try:
                     prediction = predictions[i]
                 except IndexError:
