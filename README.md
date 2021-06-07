@@ -11,6 +11,8 @@ Three entry points to perform different tasks exist:
 * `predict.py`, perform classification inference on an existing dataset JSON file using a pretrained model
     * e.g.: `python predict.py all_texts.json all_texts_classified.json path_to_model`
 
+To run this project you will need to install all dependencies in `requirements.txt`, additionally you will need to install PyTorch.
+
 ## Training Configuration
 
 The training script `main.py` can be configured via `conf/config.yaml`,
