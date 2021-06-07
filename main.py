@@ -176,8 +176,7 @@ def main(config: Config):
         dev_loader,
         model,
         device=config.device,
-        out_file=open("predictions.json", "w"),
-        save_confusion_matrix=True,
+        out_file=open("predictions-dev.json", "w"),
     )
     logging.info("Test set results")
     evaluate(

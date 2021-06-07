@@ -21,6 +21,7 @@ def plot_confusion_matrix(target, hypothesis, normalize="true"):
 
 
 def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=False):
+    model.to(device)
     if device is None:
         device = model.device
     model.eval()
