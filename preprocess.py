@@ -51,14 +51,14 @@ def preprocess(text_file_paths: List[str], out_file_path: str, title: Optional[s
     nlp = build_pipeline(parser)
     document_list = []
     for text_file_path in text_file_paths:
+        print(f"Processing {text_file_path}")
         in_file = open(text_file_path, "r")
         full_text = "\n".join(in_file.readlines())
         doc = nlp(full_text)
-        if title is None:
-            title, _ = os.path.splitext(os.path.basename(out_file_path))
+        inferred_title, _ = os.path.splitext(os.path.basename(text_file_path))
         data = {
             "text": full_text,
-            "title": title,
+            "title": title or inferred_title,
             "annotations": []
         }
         for event_ranges in doc._.events:
