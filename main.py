@@ -95,7 +95,9 @@ def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
     )
     if config.in_distribution:
         dataset = SimpleEventDataset(
-            project, ["Verwandlung_MV", "Krambambuli_MW", "Effi_Briest_MW"]
+            project,
+            ["Verwandlung_MV", "Krambambuli_MW", "Effi_Briest_MW"],
+            include_special_tokens=config.special_tokens,
         )
         total = len(dataset)
         train_size = math.floor(total * 0.8)
@@ -108,7 +110,9 @@ def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
         )
     else:
         in_distribution_dataset = SimpleEventDataset(
-            project, ["Effi_Briest_MW", "Krambambuli_MW"]
+            project,
+            ["Effi_Briest_MW", "Krambambuli_MW"],
+            include_special_tokens=config.special_tokens,
         )
         train_size = math.floor(len(in_distribution_dataset) * 0.9)
         dev_size = len(in_distribution_dataset) - train_size

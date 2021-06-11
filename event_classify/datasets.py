@@ -44,7 +44,7 @@ class EventType(Enum):
         if self == EventType.STATIVE_EVENT:
             return "stative_event"
         else:
-            ValueError("Unknown EventType")
+            raise ValueError("Unknown EventType")
 
 
 class SpanAnnotation(NamedTuple):
@@ -71,16 +71,18 @@ class SpanAnnotation(NamedTuple):
         return encoded, labels, data
 
     @staticmethod
-    def build_special_token_text(annotation: catma.Annotation, document):
+    def build_special_token_text(annotation: catma.Annotation, document, include_special_tokens: bool = True):
         output = []
         plain_text = document.plain_text
         # Provide prefix context
         previous_end = annotation.start_point - 100
         for selection in annotation.selectors:
             output.append(plain_text[previous_end:selection.start])
-            output.append("<SE>")
+            if include_special_tokens:
+                output.append(" <SE> ")
             output.append(plain_text[selection.start:selection.end])
-            output.append("<EE>")
+            if include_special_tokens:
+                output.append(" <EE> ")
             previous_end = selection.end
         # Provide suffix context
         output.append(plain_text[previous_end:previous_end + 100])
@@ -115,7 +117,7 @@ class SimpleEventDataset(Dataset):
     """
     Dataset of all event spans with their features.
     """
-    def __init__(self, project: catma.CatmaProject, annotation_collections: Iterable[str] = ()):
+    def __init__(self, project: catma.CatmaProject, annotation_collections: Iterable[str] = (), include_special_tokens: bool = True):
         """
         Args:
             project: CatmaProject to load from
@@ -130,7 +132,9 @@ class SimpleEventDataset(Dataset):
                     continue # We ignore these
                 try:
                     special_token_text = SpanAnnotation.build_special_token_text(
-                        annotation, collection.text
+                        annotation,
+                        collection.text,
+                        include_special_tokens=True,
                     )
                     span_anno = SpanAnnotation(
                         text=annotation.text,

@@ -10,6 +10,7 @@ class DatasetConfig():
     catma_uuid: str
     catma_dir: str
     in_distribution: bool
+    special_tokens: bool
 
 
 @dataclass
