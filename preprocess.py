@@ -53,7 +53,7 @@ def preprocess(text_file_paths: List[str], out_file_path: str, title: Optional[s
     for text_file_path in text_file_paths:
         print(f"Processing {text_file_path}")
         in_file = open(text_file_path, "r")
-        full_text = "\n".join(in_file.readlines())
+        full_text = "".join(in_file.readlines())
         doc = nlp(full_text)
         inferred_title, _ = os.path.splitext(os.path.basename(text_file_path))
         data = {
