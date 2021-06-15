@@ -76,7 +76,7 @@ class SpanAnnotation(NamedTuple):
         plain_text = document.plain_text
         # Provide prefix context
         previous_end = annotation.start_point - 100
-        for selection in annotation.selectors:
+        for selection in merge_direct_neighbors(annotation.selectors):
             output.append(plain_text[previous_end:selection.start])
             if include_special_tokens:
                 output.append(" <SE> ")
@@ -89,19 +89,22 @@ class SpanAnnotation(NamedTuple):
         return "".join(output)
 
     @staticmethod
-    def build_special_token_text_from_json(annotation: Dict, document: str):
+    def build_special_token_text_from_json(annotation: Dict, document: str, include_special_tokens: bool = True):
         selections = [tuple(span) for span in annotation["spans"]]
         output = []
         # Provide prefix context
         previous_end = annotation["start"] - 100
         for start, end in selections:
             output.append(document[previous_end:start])
-            output.append("<SE>")
+            if include_special_tokens:
+                output.append(" <SE> ")
             output.append(document[start:end])
-            output.append("<EE>")
+            if include_special_tokens:
+                output.append(" <EE> ")
             previous_end = end
         # Provide suffix context
         output.append(document[previous_end:previous_end + 100])
+        print("".join(output))
         return "".join(output)
 
     def output_dict(self, predicted_label):
@@ -212,6 +215,7 @@ class JSONDataset(Dataset):
                     prediction = None
                 out_doc["annotations"].append(annotation.output_dict(prediction))
                 i += 1
+            out_doc["annotations"] = list(sorted(out_doc["annotations"], key=lambda d: d["start"]))
             out_data.append(out_doc)
         out_file = open(out_path, "w")
         json.dump(out_data, out_file)
@@ -221,3 +225,12 @@ class JSONDataset(Dataset):
 
     def __len__(self):
         return len(self.annotations)
+
+
+def merge_direct_neighbors(selectors):
+    to_remove = []
+    for i in range(len(selectors)):
+        if selectors[i].end == selectors[i + 1].start:
+            selectors[i + 1].start = selectors[i].start
+            to_remove.append(i)
+    return [selector for i, selector in enumerate(selectors) if i not in to_remove]

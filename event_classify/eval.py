@@ -35,8 +35,10 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
         for anno, label in zip(annotations, predicted_labels.cpu()):
             labled_annotations.append((label, anno))
         if out_file is not None:
-            for anno, label in zip(annotations, predicted_labels.cpu()):
-                texts[anno.document_text].append(anno.output_dict(label.item()))
+            for anno, label, gold_label in zip(annotations, predicted_labels.cpu(), gold_labels.cpu()):
+                out_data = anno.output_dict(label.item())
+                out_data["gold_label"] = EventType(gold_label.item()).to_string()
+                texts[anno.document_text].append(out_data)
         predictions.append(predicted_labels.cpu())
         if gold_labels is not None:
             gold.append(gold_labels.cpu())
