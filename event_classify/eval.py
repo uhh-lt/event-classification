@@ -20,6 +20,7 @@ def plot_confusion_matrix(target, hypothesis, normalize="true"):
     return disp.plot()
 
 
+@torch.no_grad()
 def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=False):
     model.to(device)
     if device is None:
@@ -70,7 +71,7 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
             )
         json.dump(out_list, out_file)
     if report is not None:
-        return report["weighted avg"]["f1-score"], report["macro avg"]["f1-score"], torch.cat(predictions)
+        return report["weighted avg"]["f1-score"], report["macro avg"]["f1-score"], torch.cat(predictions).cpu()
     else:
-        return None, None, torch.cat(predictions)
+        return None, None, torch.cat(predictions).cpu()
 

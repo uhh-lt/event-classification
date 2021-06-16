@@ -1,9 +1,10 @@
 from __future__ import annotations
-from enum import Enum
-import logging
-from typing import Iterable, List, NamedTuple, Tuple, Optional, Dict
-import json
 from collections import defaultdict
+import copy
+from enum import Enum
+import json
+import logging
+from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple
 
 import catma_gitlab as catma
 import torch
@@ -76,7 +77,7 @@ class SpanAnnotation(NamedTuple):
         plain_text = document.plain_text
         # Provide prefix context
         previous_end = annotation.start_point - 100
-        for selection in merge_direct_neighbors(annotation.selectors):
+        for selection in merge_direct_neighbors(copy.deepcopy(annotation.selectors)):
             output.append(plain_text[previous_end:selection.start])
             if include_special_tokens:
                 output.append(" <SE> ")
@@ -137,7 +138,7 @@ class SimpleEventDataset(Dataset):
                     special_token_text = SpanAnnotation.build_special_token_text(
                         annotation,
                         collection.text,
-                        include_special_tokens=True,
+                        include_special_tokens=include_special_tokens,
                     )
                     span_anno = SpanAnnotation(
                         text=annotation.text,
@@ -146,7 +147,7 @@ class SimpleEventDataset(Dataset):
                         document_text=collection.text.plain_text,
                         start=annotation.start_point,
                         end=annotation.end_point,
-                        spans=[(s.start, s.end) for s in annotation.selectors],
+                        spans=[(s.start, s.end) for s in merge_direct_neighbors(copy.deepcopy(annotation.selectors))],
                     )
                     self.annotations.append(span_anno)
                 except ValueError as e:
@@ -163,7 +164,7 @@ class JSONDataset(Dataset):
     """
     Dataset based on JSON file created by our preprocessing script
     """
-    def __init__(self, dataset_file: str):
+    def __init__(self, dataset_file: str, include_special_tokens: bool = True):
         """
         Args:
             dataset_file: Path to json file created by preprocessing script
@@ -177,7 +178,7 @@ class JSONDataset(Dataset):
             full_text = document["text"]
             for annotation in document["annotations"]:
                 special_token_text = SpanAnnotation.build_special_token_text_from_json(
-                    annotation, full_text
+                    annotation, full_text, include_special_tokens
                 )
                 event_type = None
                 if annotation.get("prediction") is not None:
@@ -229,7 +230,7 @@ class JSONDataset(Dataset):
 
 def merge_direct_neighbors(selectors):
     to_remove = []
-    for i in range(len(selectors)):
+    for i in range(len(selectors) - 1):
         if selectors[i].end == selectors[i + 1].start:
             selectors[i + 1].start = selectors[i].start
             to_remove.append(i)

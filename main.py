@@ -124,6 +124,7 @@ def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
         test_dataset = SimpleEventDataset(
             project,
             ["Verwandlung_MV"],
+            include_special_tokens=config.special_tokens,
         )
     return train_dataset, dev_dataset, test_dataset
 
