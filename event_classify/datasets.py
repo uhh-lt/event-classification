@@ -4,7 +4,7 @@ import copy
 from enum import Enum
 import json
 import logging
-from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple
+from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Any
 
 import catma_gitlab as catma
 import torch
@@ -35,6 +35,18 @@ class EventType(Enum):
             return EventType.STATIVE_EVENT
         raise ValueError(f"Invalid Event variant {name}")
 
+    def get_narrativity_score(self):
+        if self == EventType.NON_EVENT:
+            return 0
+        if self == EventType.CHANGE_OF_STATE:
+            return 7
+        if self == EventType.PROCESS:
+            return 5
+        if self == EventType.STATIVE_EVENT:
+            return 2
+        else:
+            raise ValueError("Unknown EventType")
+
     def to_string(self) -> str:
         if self == EventType.NON_EVENT:
             return "non_event"
@@ -64,6 +76,7 @@ class SpanAnnotation(NamedTuple):
             [anno.special_token_text for anno in data],
             return_tensors="pt",
             padding=True,
+            truncation=True,
         )
         if any(anno.event_type is None for anno in data):
             labels = None
@@ -105,7 +118,6 @@ class SpanAnnotation(NamedTuple):
             previous_end = end
         # Provide suffix context
         output.append(document[previous_end:previous_end + 100])
-        print("".join(output))
         return "".join(output)
 
     def output_dict(self, predicted_label):
@@ -164,15 +176,20 @@ class JSONDataset(Dataset):
     """
     Dataset based on JSON file created by our preprocessing script
     """
-    def __init__(self, dataset_file: str, include_special_tokens: bool = True):
+    def __init__(self, dataset_file: Optional[str], data : Optional[list] = None, include_special_tokens: bool = True):
         """
         Args:
             dataset_file: Path to json file created by preprocessing script
+            data: Instead of a file path read data from this dict instead
         """
         super().__init__()
         self.annotations : List[SpanAnnotation] = []
         self.documents: defaultdict[str, List[SpanAnnotation]] = defaultdict(list)
-        data = json.load(open(dataset_file))
+        if data is None:
+            if dataset_file is None:
+                raise ValueError("Only one of dataset_file and data may be None")
+            else:
+                data = json.load(open(dataset_file))
         for document in data:
             title = document["title"]
             full_text = document["text"]
@@ -196,7 +213,7 @@ class JSONDataset(Dataset):
                 self.documents[title].append(span_anno)
                 self.annotations.append(span_anno)
 
-    def save_json(self, out_path: str, predictions: List[EventType] = []):
+    def get_annotation_json(self, predictions: List[EventType]) -> List[Dict[str, Any]]:
         out_data = []
         i = 0
         if len(predictions) > 0 and len(predictions) != len(self.annotations):
@@ -218,6 +235,10 @@ class JSONDataset(Dataset):
                 i += 1
             out_doc["annotations"] = list(sorted(out_doc["annotations"], key=lambda d: d["start"]))
             out_data.append(out_doc)
+        return out_data
+
+    def save_json(self, out_path: str, predictions: List[EventType] = []):
+        out_data = self.get_annotation_json(predictions)
         out_file = open(out_path, "w")
         json.dump(out_data, out_file)
 

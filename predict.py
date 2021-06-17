@@ -1,26 +1,27 @@
-import typer
+import gc
 import json
+import math
 import os
-from transformers import ElectraTokenizer, ElectraForSequenceClassification
-from torch.utils.data import DataLoader
+from typing import NamedTuple, List
 
 import catma_gitlab as catma
-from event_classify.datasets import JSONDataset, SpanAnnotation, EventType, SimpleEventDataset
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+import typer
+
+from event_classify.datasets import (
+    EventType,
+    JSONDataset,
+    SimpleEventDataset,
+    SpanAnnotation,
+)
 from event_classify.eval import evaluate
+from event_classify.parser import Parser
+import event_classify.preprocessing
+from event_classify.preprocessing import build_pipeline
+from event_classify.util import get_model
 
 app = typer.Typer()
-
-
-def get_model(model_path: str):
-    tokenizer: ElectraTokenizer = ElectraTokenizer.from_pretrained(
-        os.path.join(model_path, "tokenizer")
-    )
-    model = ElectraForSequenceClassification.from_pretrained(
-        os.path.join(model_path, "best-model"),
-        num_labels=4,
-    )
-    return model, tokenizer
-
 
 @app.command()
 def main(segmented_json: str, out_path: str, model_path: str, device: str = "cuda:0", batch_size: int = 16, special_tokens: bool = True):
@@ -69,6 +70,109 @@ def gold_spans(model_path: str, device: str = "cuda:0", special_tokens: bool = T
         out_file=open("gold_spans.json", "w"),
         save_confusion_matrix=False,
     )
+
+
+@app.command()
+def dprose(model_path: str, output_name: str, device: str = "cuda:0", special_tokens: bool = True, batch_size: int = 8):
+    """
+    Predict all of d-prose, applying segmentation in the same step.
+    """
+    if device.startswith("cuda"):
+        event_classify.preprocessing.use_gpu()
+    out_file = open(output_name, "w")
+    ids = open("d-prose/d-prose_ids.csv")
+    # skip header
+    _ = next(ids)
+    nlp = build_pipeline(Parser.SPACY)
+    for dprose_id, name in tqdm([line.split(",") for line in ids]):
+        # We want to throw out the previous iterations memory
+        # doc = None
+        # gc.collect()
+        # This way we might not run out of memory after a few docs...
+        dprose_id = int(dprose_id)
+        name = name.strip()
+        in_file = open(os.path.join("d-prose", name + ".txt"))
+        full_text = "".join(in_file.readlines())
+        splits = split_text(full_text)
+        # Sanity check, splitting should change text!
+        assert full_text == "".join(split.text for split in splits)
+        data = {
+            "text": full_text,
+            "title": name,
+            "annotations": []
+        }
+        for split in splits:
+            doc = nlp(split.text)
+            annotations = event_classify.preprocessing.get_annotation_dicts(doc)
+            for annotation in annotations:
+                annotation["start"] += split.offset
+                annotation["end"] += split.offset
+                new_spans = []
+                for span in annotation["spans"]:
+                    new_spans.append((
+                        span[0] + split.offset,
+                        span[1] + split.offset,
+                    ))
+                annotation["spans"] = new_spans
+            data["annotations"].extend(annotations)
+        towards_end = data["annotations"][-10]
+        print(full_text[towards_end["start"]:towards_end["end"]])
+        dataset = JSONDataset(dataset_file=None, data=[data], include_special_tokens=special_tokens)
+        loader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            collate_fn=lambda list_: SpanAnnotation.to_batch(list_, tokenizer),
+        )
+        model, tokenizer = get_model(model_path)
+        model.to(device)
+        _, _, predictions = evaluate(loader, model, device=device)
+        # We only pass in one document, so we only use [0]
+        data = dataset.get_annotation_json([EventType(p.item()) for p in predictions])[0]
+        data["dprose_id"] = dprose_id
+        json.dump(data, out_file)
+        out_file.flush()
+        out_file.write("\n")
+        out_file.flush()
+
+class SubDoc(NamedTuple):
+    offset: int
+    text: str
+
+
+def split_text(text: str, allowed_split=".\n") -> List[SubDoc]:
+    """
+    Split text into a number of sub strings managable for spacy.
+
+    This could fail for abritrary sequences but the books in d-prose all have
+    seem to have '.\n'
+    """
+    total = len(text)
+    # This is super conservative spacy seems to be able to do >300k tokens on 12GB VRAM
+    max_segment_length = 100000
+    segments = text.split(allowed_split)
+    out = []
+    current_split = []
+    for i, segment in enumerate(segments):
+        if len(segment) > max_segment_length:
+            if allowed_split != ". ":
+                # Try again with the double newline strategy
+                return split_text(text, allowed_split=". ")
+            else:
+                raise ValueError("Document has too few split options.")
+        if (sum(len(s) for s in current_split) + len(segment)) <= max_segment_length:
+            if i == len(segments) - 1:
+                current_split.append(segment)
+            else:
+                current_split.append(segment + allowed_split)
+        else:
+            out.append(SubDoc(text="".join(current_split), offset=sum(len(split.text) for split in out)))
+            if i == len(segments) - 1:
+                current_split = [segment]
+            else:
+                current_split = [segment + allowed_split]
+    out.append(SubDoc(text="".join(current_split), offset=sum(len(split.text) for split in out)))
+    return out
+
 
 if __name__ == "__main__":
     app()

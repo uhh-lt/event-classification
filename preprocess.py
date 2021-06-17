@@ -10,31 +10,12 @@ from typing import List
 import catma_gitlab as catma
 import typer
 import spacy
-from spacy.tokens import Doc, Token
-from thinc.api import set_gpu_allocator, require_gpu
 
+from event_classify.preprocessing import build_pipeline, use_gpu, get_annotation_dicts
 from event_classify.datasets import SimpleEventDataset
-import event_classify.segmentations # noqa: W0611
 from event_classify.parser import HermaParser, ParZuParser, Parser
 
 app = typer.Typer()
-
-
-def build_pipeline(parser: Parser) -> spacy.Language:
-    if parser == Parser.SPACY:
-        nlp = spacy.load("de_dep_news_trf")
-        nlp.add_pipe("event_segmentation", after="parser")
-    elif parser == Parser.PARZU:
-        nlp = spacy.load("de_dep_news_trf", disable=["parser"])
-        nlp.add_pipe("sentencizer")
-        nlp.add_pipe("parzu_parser")
-        nlp.add_pipe("event_segmentation", after="parzu_parser")
-    elif parser == Parser.HERMA:
-        nlp = spacy.load("de_dep_news_trf", disable=["parser"])
-        nlp.add_pipe("sentencizer")
-        nlp.add_pipe("herma_parser")
-        nlp.add_pipe("event_segmentation", after="herma_parser")
-    return nlp
 
 
 @app.command()
@@ -45,8 +26,7 @@ def preprocess(text_file_paths: List[str], out_file_path: str, title: Optional[s
     Creates a JSON file with the document and its event spans suitable for passing to the `predict.py`.
     """
     if gpu:
-        set_gpu_allocator("pytorch")
-        require_gpu(0)
+        use_gpu()
 
     nlp = build_pipeline(parser)
     document_list = []
@@ -61,16 +41,7 @@ def preprocess(text_file_paths: List[str], out_file_path: str, title: Optional[s
             "title": title or inferred_title,
             "annotations": []
         }
-        for event_ranges in doc._.events:
-            spans = []
-            for subspan in event_ranges:
-                spans.append((subspan.start_char, subspan.end_char))
-            data["annotations"].append({
-                "start": min([start for start, end in spans]),
-                "end": max([end for start, end in spans]),
-                "spans": spans,
-                "predicted": None,
-            })
+        data["annotations"] = get_annotation_dicts(doc)
         document_list.append(data)
     json.dump(document_list, open(out_file_path, "w"))
 
@@ -142,6 +113,7 @@ def get_verwandlung():
         ["Verwandlung_MV"],
     )
     return dataset, collection.text.plain_text
+
 
 if __name__ == "__main__":
     app()
