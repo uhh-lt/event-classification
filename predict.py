@@ -5,7 +5,8 @@ import os
 from typing import NamedTuple, List
 
 import catma_gitlab as catma
-from torch.utils.data import DataLoader
+import torch
+from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 import typer
 
@@ -44,22 +45,35 @@ def main(segmented_json: str, out_path: str, model_path: str, device: str = "cud
 
 
 @app.command()
-def gold_spans(model_path: str, device: str = "cuda:0", special_tokens: bool = True):
+def gold_spans(model_path: str, device: str = "cuda:0", special_tokens: bool = True, dev: bool = False):
     project = catma.CatmaProject(
         ".",
         "CATMA_DD5E9DF1-0F5C-4FBD-B333-D507976CA3C7_EvENT_root",
         filter_intrinsic_markup=False,
     )
+    in_distribution_dataset = SimpleEventDataset(
+        project,
+        ["Effi_Briest_MW", "Krambambuli_MW"],
+        include_special_tokens=special_tokens,
+    )
+    train_size = math.floor(len(in_distribution_dataset) * 0.9)
+    dev_size = len(in_distribution_dataset) - train_size
+    train_dataset, dev_dataset = random_split(
+        in_distribution_dataset,
+        [train_size, dev_size],
+        generator=torch.Generator().manual_seed(13),
+    )
     collection = project.ac_dict["Verwandlung_MV"]
-    dataset = SimpleEventDataset(
+    test_dataset = SimpleEventDataset(
         project,
         ["Verwandlung_MV"],
         include_special_tokens=special_tokens,
     )
     model, tokenizer = get_model(model_path)
     model.eval()
+    print(len(dev_dataset))
     loader = DataLoader(
-        dataset,
+        dev_dataset if dev else test_dataset,
         batch_size=16,
         collate_fn=lambda list_: SpanAnnotation.to_batch(list_, tokenizer),
     )
@@ -68,7 +82,7 @@ def gold_spans(model_path: str, device: str = "cuda:0", special_tokens: bool = T
         model,
         device=device,
         out_file=open("gold_spans.json", "w"),
-        save_confusion_matrix=False,
+        save_confusion_matrix=True,
     )
 
 
