@@ -6,6 +6,7 @@ import os
 import json
 import bisect
 from typing import List
+import re
 
 import catma_gitlab as catma
 import typer
@@ -60,6 +61,11 @@ def spans(input_sentence: str, display: bool = False, parser: Parser = typer.Opt
             print(event_range)
 
 
+def is_close(predict, target, limit=5):
+    return abs(predict[0] - target[0]) <= limit \
+        and abs(predict[1] - target[1]) <= limit
+
+
 @app.command()
 def eval(parser: Parser = typer.Option(Parser.SPACY)):
     """
@@ -69,29 +75,37 @@ def eval(parser: Parser = typer.Option(Parser.SPACY)):
     # require_gpu(0)
     gold_external_spans = set()
     verwandlung_dataset, text = get_verwandlung()
+    texts = []
+    text_spans = []
     for annotation in verwandlung_dataset:
-        gold_external_spans.add((annotation.start, annotation.end))
+        for span in annotation.spans:
+            new_text = re.subn("[^A-Za-z]", "", text[span[0]:span[1]])[0]
+            texts.append(new_text)
+            text_spans.append(span)
+        # gold_external_spans.add((annotation.start, annotation.end))
     nlp = build_pipeline(parser)
     doc = nlp(text)
     predict_external_spans = set()
+    tp = 0
+    fp = 0
+    matched = [False for _ in range(len(texts))]
     for event_ranges in doc._.events:
-        start = min(r.start_char for r in event_ranges)
-        end = max(r.end_char for r in event_ranges)
-        predict_external_spans.add((start, end))
-    overlap = len(predict_external_spans & gold_external_spans)
-    accuracy =  overlap / max([len(predict_external_spans), len(gold_external_spans)])
-    predict = sorted(predict_external_spans)
-    gold = sorted(gold_external_spans)
-    for gold_span in gold[:100]:
-        print("===========")
-        pred_span = predict[find_best_match_for_start(predict, gold_span)]
-        print("GOLD:")
-        print(text[gold_span[0]:gold_span[1]])
-        print("Predict:")
-        print(text[pred_span[0]:pred_span[1]])
-    print("Num Predicted:", len(predict_external_spans))
-    print("Num Gold", len(gold_external_spans))
-    print("Accuracy:", accuracy)
+        for r in event_ranges:
+            cleaned_text = re.subn("[^A-Za-z]", "", r.text)[0]
+            match_ids = [i for i, t in enumerate(texts) if cleaned_text == t]
+            match_spans = [text_spans[i] for i in match_ids]
+            matches = [is_close((r.start_char, r.end_char), ms) for ms in match_spans]
+            matched_to = [i for i in match_ids if is_close((r.start_char, r.end_char), text_spans[i])]
+            if any(matches):
+                matched[matched_to[0]] = True
+                tp += 1
+            else:
+                fp += 1
+    precision = tp / (tp + fp)
+    fn = len([e for e in matched if e is False])
+    recall = tp / (tp + fn)
+    print(precision, recall)
+    print("F1:", 2 * (precision * recall) / (precision + recall))
 
 
 def find_best_match_for_start(sorted_list, element):
