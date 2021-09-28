@@ -90,6 +90,18 @@ def eval(parser: Parser = typer.Option(Parser.SPACY)):
     fp = 0
     matched = [False for _ in range(len(texts))]
     for event_ranges in doc._.events:
+        min_start = min(r.start_char for r in event_ranges)
+        max_end = max(r.end_char for r in event_ranges)
+        to_print = ""
+        # to_print = to_print + text[min_start - 100:min_start]
+        previous_end = min_start - 100
+        for r in event_ranges:
+            to_print = to_print + text[previous_end:r.start_char] + "<EVENT>" + text[r.start_char:r.end_char] + "</EVENT>"
+            previous_end = r.end_char
+        to_print = to_print + text[max_end:max_end + 100]
+        print("=======")
+        if len(event_ranges) > 1:
+            print(to_print)
         for r in event_ranges:
             cleaned_text = re.subn("[^A-Za-z]", "", r.text)[0]
             match_ids = [i for i, t in enumerate(texts) if cleaned_text == t]

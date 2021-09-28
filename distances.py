@@ -5,7 +5,9 @@ from itertools import combinations_with_replacement
 import os
 from typing import List
 
-from fastdtw import fastdtw
+import numpy as np
+from statsmodels.nonparametric.smoothers_lowess import lowess
+from dtw import dtw
 from matplotlib import pyplot as plt
 import pandas as pd
 from tqdm import tqdm
@@ -24,7 +26,8 @@ def get_narrativity_scores(data, smoothing_span=30):
         scores.append(EventType.from_tag_name(span["predicted"]).get_narrativity_score())
     series = pd.Series(scores).rolling(smoothing_span, center=True, win_type='cosine').mean()
     series = series[series.notnull()]
-    return int(data["dprose_id"]), series
+    out = int(data["dprose_id"]), [np.mean(e) for e in np.array_split(series.to_numpy(), 50)]
+    return out
 
 
 @app.command()
@@ -34,9 +37,10 @@ def calculate_distances(dprose_json: str, out_path: str, display: List[int] = []
     for i, line in tqdm(enumerate(jsonlines)):
         doc = ujson.loads(line)
         dprose_id, scores = get_narrativity_scores(doc)
-        series[dprose_id] = list(scores.values)
+        series[dprose_id] = list(scores)
         if dprose_id in display:
-            plt.plot(scores.values, label=doc["title"])
+            plt.plot(scores, label=doc["title"])
+    plt.legend()
     plt.show()
     df = pd.DataFrame(None, columns=sorted(series.keys()), index=sorted(series.keys()))
     # Diagonal is zeros
@@ -44,7 +48,8 @@ def calculate_distances(dprose_json: str, out_path: str, display: List[int] = []
         df[el][el] = 0
     for (outer_id, outer_scores), (inner_id, inner_scores) in tqdm(combinations_with_replacement(series.items(), 2)):
         if outer_id != inner_id:
-            dist, _ = fastdtw(outer_scores, inner_scores)
+            dist = dtw(outer_scores, inner_scores).normalizedDistance
+            # dist = np.mean(np.abs(np.array(outer_scores) - np.array(inner_scores)))
             df[outer_id][inner_id] = dist
             df[inner_id][outer_id] = dist
     df.to_pickle(out_path)

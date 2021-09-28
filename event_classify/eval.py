@@ -1,6 +1,7 @@
 from collections import defaultdict
 import logging
 import json
+import seaborn as sns
 
 from sklearn.metrics import confusion_matrix, classification_report
 from sklearn.metrics._plot.confusion_matrix import ConfusionMatrixDisplay
@@ -13,11 +14,31 @@ from event_classify.datasets import EventType
 
 def plot_confusion_matrix(target, hypothesis, normalize="true"):
     cm = confusion_matrix(target, hypothesis, normalize=normalize)
-    disp = ConfusionMatrixDisplay(
-        confusion_matrix=cm,
-        display_labels=["non-event", "change of state", "process", "stative event"],
+    cm2 = confusion_matrix(target, hypothesis, normalize=None)
+    tick_names = ["Non Event", "Change of State", "Process", "Stative Event"]
+    ax = sns.heatmap(
+        cm,
+        vmin=0.0,
+        vmax=1.0,
+        cmap=plt.cm.Blues,
+        xticklabels=tick_names,
+        yticklabels=tick_names,
+        square=True,
+        annot=True,
+        cbar=True
     )
-    return disp.plot()
+    ax.set_ylabel("True Labels")
+    ax.set_xlabel("Predicted Labels")
+    # print(cm2)
+    # disp = ConfusionMatrixDisplay(
+    #     confusion_matrix=cm,
+    #     display_labels=["non-event", "change of state", "process", "stative event"],
+    # )
+    # plotted = disp.plot(
+    #     cmap=plt.cm.Blues,
+    # )
+    # plotted.figure.colorbar()
+    return ax
 
 
 @torch.no_grad()
@@ -57,7 +78,11 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
         )
         logging.info(classification_report(torch.cat(gold), torch.cat(predictions)))
     if save_confusion_matrix and len(gold) > 0:
+        plt.rc("text", usetex=True)
+        plt.rc("font", family="serif", size=12)
         _ = plot_confusion_matrix(torch.cat(gold), torch.cat(predictions))
+        plt.tight_layout()
+        plt.gcf().subplots_adjust(left=0.2)
         plt.savefig("confusion_matrix.pdf")
     if out_file is not None:
         out_list = []

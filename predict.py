@@ -148,6 +148,58 @@ def dprose(model_path: str, output_name: str, device: str = "cuda:0", special_to
         out_file.write("\n")
         out_file.flush()
 
+
+@app.command()
+def plain_text_file(model_path: str, in_name: str, output_name: str, device: str = "cuda:0", special_tokens: bool = True, batch_size: int = 8):
+    """
+    Predict a plain text file.
+    """
+    if device.startswith("cuda"):
+        event_classify.preprocessing.use_gpu()
+    out_file = open(output_name, "w")
+    nlp = build_pipeline(Parser.SPACY)
+    in_file = open(in_name, "r")
+    full_text = "".join(in_file.readlines())
+    splits = split_text(full_text)
+    # Sanity check, splitting should change text!
+    assert full_text == "".join(split.text for split in splits)
+    data = {
+        "text": full_text,
+        "title": os.path.basename(in_name),
+        "annotations": []
+    }
+    for split in splits:
+        doc = nlp(split.text)
+        annotations = event_classify.preprocessing.get_annotation_dicts(doc)
+        for annotation in annotations:
+            annotation["start"] += split.offset
+            annotation["end"] += split.offset
+            new_spans = []
+            for span in annotation["spans"]:
+                new_spans.append((
+                    span[0] + split.offset,
+                    span[1] + split.offset,
+                ))
+            annotation["spans"] = new_spans
+        data["annotations"].extend(annotations)
+    towards_end = data["annotations"][-10]
+    print(full_text[towards_end["start"]:towards_end["end"]])
+    dataset = JSONDataset(dataset_file=None, data=[data], include_special_tokens=special_tokens)
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        collate_fn=lambda list_: SpanAnnotation.to_batch(list_, tokenizer),
+    )
+    model, tokenizer = get_model(model_path)
+    model.to(device)
+    _, _, predictions = evaluate(loader, model, device=device)
+    # We only pass in one document, so we only use [0]
+    data = dataset.get_annotation_json([EventType(p.item()) for p in predictions])[0]
+    json.dump(data, out_file)
+    out_file.flush()
+    out_file.write("\n")
+    out_file.flush()
+
 class SubDoc(NamedTuple):
     offset: int
     text: str
