@@ -12,7 +12,7 @@ from torch.nn.functional import cross_entropy
 from torch.optim import SGD
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, Dataset, random_split
-from torch.utils.tensorboard import SummaryWriter
+import mlflow
 from tqdm import tqdm
 from transformers import ElectraTokenizer, ElectraForSequenceClassification
 
@@ -34,7 +34,7 @@ def add_special_tokens(model, tokenizer):
     model.resize_token_embeddings(len(tokenizer))
 
 
-def train(train_loader, dev_loader, model, config: Config, writer: SummaryWriter):
+def train(train_loader, dev_loader, model, config: Config):
     model.to(config.device)
     optimizer = SGD(model.parameters(), lr=config.learning_rate)
     f1s: List[float] = []
@@ -56,7 +56,7 @@ def train(train_loader, dev_loader, model, config: Config, writer: SummaryWriter
             loss.backward()
             optimizer.step()
             model.zero_grad()
-            writer.add_scalar("Loss", loss.item())
+            mlflow.log_metric("Loss", loss.item())
         if scheduler is not None:
             scheduler.step()
         if dev_loader is not None:
@@ -72,9 +72,9 @@ def train(train_loader, dev_loader, model, config: Config, writer: SummaryWriter
                 model.save_pretrained("best-model")
             f1s.append(f1)
             if scheduler is not None:
-                writer.add_scalar("Learning Rate", scheduler.get_last_lr()[0], epoch)
-            writer.add_scalar("Weighted F1", weighted_f1, epoch)
-            writer.add_scalar("Macro F1", macro_f1, epoch)
+                mlflow.log_metric("Learning Rate", scheduler.get_last_lr()[0], epoch)
+            mlflow.log_metric("Weighted F1", weighted_f1, epoch)
+            mlflow.log_metric("Macro F1", macro_f1, epoch)
             if len(f1s) > 0 and max(f1s) not in f1s[-config.patience :]:
                 logging.info("Ran out of patience, stopping training.")
                 return
@@ -173,9 +173,8 @@ def main(config: Config):
         num_labels=4,
         label_smoothing=config.label_smoothing,
     )
-    writer = SummaryWriter(
-        os.path.join(hydra.utils.to_absolute_path("runs"), hydra_run_name)
-    )
+    mlflow.set_tracking_uri("file://" + hydra.utils.get_original_cwd() + "/mlruns")
+    mlflow.log_params(dict(config))
     add_special_tokens(model, tokenizer)
     datasets = get_datasets(config.dataset)
     print_target_weights(datasets[0])
@@ -184,7 +183,7 @@ def main(config: Config):
     train_loader, dev_loader, test_loader = list(
         build_loaders(tokenizer, datasets, config)
     )
-    train(train_loader, dev_loader, model, config, writer)
+    train(train_loader, dev_loader, model, config)
     if dev_loader is not None:
         model = ElectraForEventClassification.from_pretrained(
             "best-model",
