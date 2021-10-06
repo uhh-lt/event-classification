@@ -53,17 +53,16 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
     labled_annotations = []
     for input_data, gold_labels, annotations in tqdm(loader, desc="Evaluating"):
         out = model(**input_data.to(device))
-        predicted_labels = out.logits.argmax(-1)
-        for anno, label in zip(annotations, predicted_labels.cpu()):
+        for anno, label in zip(annotations, out.event_kind.cpu()):
             labled_annotations.append((label, anno))
         if out_file is not None:
-            for anno, label, gold_label in zip(annotations, predicted_labels.cpu(), gold_labels.cpu()):
+            for anno, label, gold_label in zip(annotations, out.event_kind, gold_labels.event_kind):
                 out_data = anno.output_dict(label.item())
                 out_data["gold_label"] = EventType(gold_label.item()).to_string()
                 texts[anno.document_text].append(out_data)
-        predictions.append(predicted_labels.cpu())
+        predictions.append(out.event_kind.cpu())
         if gold_labels is not None:
-            gold.append(gold_labels.cpu())
+            gold.append(gold_labels.event_kind.cpu())
     for label, annotation in labled_annotations:
         logging.debug(
             f"=== Gold: {annotation.event_type}, predicted: {EventType(label.item())}"

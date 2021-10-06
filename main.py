@@ -17,6 +17,7 @@ from tqdm import tqdm
 from transformers import ElectraTokenizer, ElectraForSequenceClassification
 
 from event_classify.eval import evaluate
+from event_classify.model import ElectraForEventClassification
 from event_classify.config import Config, DatasetConfig
 from event_classify.label_smoothing import LabelSmoothingLoss
 from event_classify.datasets import SimpleEventDataset, SpanAnnotation
@@ -34,7 +35,6 @@ def add_special_tokens(model, tokenizer):
 
 
 def train(train_loader, dev_loader, model, config: Config, writer: SummaryWriter):
-    class_weights = CLASS_WEIGHTS.to(config.device)
     model.to(config.device)
     optimizer = SGD(model.parameters(), lr=config.learning_rate)
     f1s: List[float] = []
@@ -44,19 +44,13 @@ def train(train_loader, dev_loader, model, config: Config, writer: SummaryWriter
             optimizer,
             lambda epoch: 1 - (epoch / config.scheduler.epochs),
         )
-    loss_func = LabelSmoothingLoss(weight=CLASS_WEIGHTS)
     for epoch in range(config.epochs):
         loss_epoch: float = 0.0
         model.train()
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
         for i, (input_data, labels, _) in enumerate(pbar):
-            out = model(**input_data.to(config.device))
-            if config.label_smoothing:
-                loss = cross_entropy(
-                    out.logits, labels.to(config.device), weight=class_weights
-                )
-            else:
-                loss = loss_func(out.logits, labels.to(config.device))
+            out = model(**input_data.to(config.device), labels=labels.to(config.device))
+            loss = out.loss
             loss_epoch += float(loss.item())
             pbar.set_postfix({"mean epoch loss": loss_epoch / (i + 1)})
             loss.backward()
@@ -93,9 +87,23 @@ def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
         filter_intrinsic_markup=False,
     )
     if config.in_distribution:
+        all_annotation_collections = [
+            "Verwandlung_MV",
+            "Verwandlung_MW",
+            "Effi_Briest_GS",
+            "Effi_Briest_MW",
+            "Eckbert_AN",
+            "Eckbert_MW",
+            "Judenbuche_AN",
+            "Judenbuche_GS",
+            "Krambambuli_GS",
+            "Krambambuli_MW",
+            "Erdbeben_MW",
+            "Erdbeben_GS"
+        ]
         dataset = SimpleEventDataset(
             project,
-            ["Verwandlung_MV", "Krambambuli_MW", "Effi_Briest_MW"],
+            all_annotation_collections,
             include_special_tokens=config.special_tokens,
         )
         total = len(dataset)
@@ -160,9 +168,10 @@ def main(config: Config):
         config.pretrained_model,
     )
     tokenizer.save_pretrained("tokenizer")
-    model = ElectraForSequenceClassification.from_pretrained(
+    model = ElectraForEventClassification.from_pretrained(
         config.pretrained_model,
         num_labels=4,
+        label_smoothing=config.label_smoothing,
     )
     writer = SummaryWriter(
         os.path.join(hydra.utils.to_absolute_path("runs"), hydra_run_name)
@@ -177,8 +186,9 @@ def main(config: Config):
     )
     train(train_loader, dev_loader, model, config, writer)
     if dev_loader is not None:
-        model = ElectraForSequenceClassification.from_pretrained(
-            "best-model"
+        model = ElectraForEventClassification.from_pretrained(
+            "best-model",
+            config.label_smoothing,
         )
     logging.info("Dev set results")
     evaluate(

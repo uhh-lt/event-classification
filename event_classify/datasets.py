@@ -1,5 +1,6 @@
 from __future__ import annotations
 from collections import defaultdict
+from dataclasses import dataclass
 import copy
 from enum import Enum
 import json
@@ -10,6 +11,21 @@ import catma_gitlab as catma
 import torch
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
+
+
+@dataclass
+class EventClassificationLabels:
+    event_kind: torch.Tensor
+    iterative: torch.Tensor
+    speech_type: torch.Tensor
+    thought_representation: torch.Tensor
+    mental: torch.Tensor
+
+    def to(self, device):
+        new = copy.deepcopy(self)
+        for member in new.__dataclass_fields__:
+            setattr(new, member, getattr(new, member).to(device))
+        return new
 
 
 class EventType(Enum):
@@ -60,9 +76,74 @@ class EventType(Enum):
             raise ValueError("Unknown EventType")
 
 
+class SpeechType(Enum):
+    CHARACTER = 0
+    NARRATOR = 1
+    NONE = 2
+
+    def to_onehot(self, device="cpu"):
+        out = torch.zeros(3, device=device)
+        out[self.value] = 1.0
+        return out
+
+    @staticmethod
+    def from_list(in_list: List[str]) -> SpeechType:
+        if "character_speech" in in_list:
+            return SpeechType.CHARACTER
+        elif "narrator_speech" in in_list:
+            return SpeechType.CHARACTER
+        elif len(in_list) > 0:
+            return SpeechType.NONE
+        else:
+            raise ValueError("RepresentationType not specified")
+
+
+class RepresentationType(Enum):
+    THOUGHT = 0
+    CHARACTER_SPEECH = 1
+    NARRATOR_SPEECH = 2
+    THOUGHT_CHARACTER_SPEECH = 3
+    THOUGHT_NARRATOR_SPEECH = 4
+
+    def to_onehot(self):
+        out = torch.zeros(4)
+        out[self.value] = 1.0
+        return out
+
+    @staticmethod
+    def from_list(representation_list):
+        if len(representation_list) > 2:
+            raise ValueError("Representation list may only have a maximum of two values")
+        if "thought_representation" in representation_list:
+            if len(representation_list) == 2:
+                if "narrator_speech" in representation_list:
+                    return RepresentationType.THOUGHT_CHARACTER_SPEECH
+                elif "character_speech" in representation_list:
+                    return RepresentationType.THOUGHT_CHARACTER_SPEECH
+                else:
+                    raise ValueError("Invalid combination of representations")
+            else:
+                return RepresentationType.THOUGHT
+        else:
+            if len(representation_list) != 1:
+                raise ValueError("Only `thought_representation` allows for multiple values in representation list.")
+            elif representation_list == ["narrator_speech"]:
+                return RepresentationType.NARRATOR_SPEECH
+            elif representation_list == ["character_speech"]:
+                return RepresentationType.CHARACTER_SPEECH
+            else:
+                raise ValueError("Invalid representation type")
+
+
+
+
 class SpanAnnotation(NamedTuple):
     text: str
     special_token_text: str
+    iterative: Optional[bool]
+    speech_type: SpeechType
+    thought_representation: bool
+    mental: Optional[bool]
     event_type: Optional[EventType]
     document_text: str
     # These annotate the start and end offsets in the document string
@@ -81,7 +162,13 @@ class SpanAnnotation(NamedTuple):
         if any(anno.event_type is None for anno in data):
             labels = None
         else:
-            labels = torch.tensor([anno.event_type.value for anno in data])
+            labels = EventClassificationLabels(
+                event_kind=torch.tensor([anno.event_type.value for anno in data]),
+                mental=torch.tensor([anno.mental for anno in data if anno.event_type != EventType.NON_EVENT], dtype=torch.float),
+                iterative=torch.tensor([anno.iterative for anno in data if anno.event_type != EventType.NON_EVENT], dtype=torch.float),
+                speech_type=torch.tensor([anno.speech_type.value for anno in data]),
+                thought_representation=torch.tensor([anno.thought_representation for anno in data], dtype=torch.float),
+            )
         return encoded, labels, data
 
     @staticmethod
@@ -129,6 +216,11 @@ class SpanAnnotation(NamedTuple):
         }
 
 
+def simplify_representation(repr_list):
+    repr_list = [t.replace("_1", "").replace("_2", "_").replace("_3", "") for t in repr_list]
+    return repr_list
+
+
 class SimpleEventDataset(Dataset):
     """
     Dataset of all event spans with their features.
@@ -146,16 +238,34 @@ class SimpleEventDataset(Dataset):
             for annotation in collection.annotations:
                 if annotation.tag.name in ["Zweifelsfall", "change_of_episode"]:
                     continue # We ignore these
+                if len(annotation.properties.get("mental", [])) > 1:
+                    logging.warning("Ignoring annotation with inconsistent 'mental' property")
+                    continue
                 try:
                     special_token_text = SpanAnnotation.build_special_token_text(
                         annotation,
                         collection.text,
                         include_special_tokens=include_special_tokens,
                     )
+                    simple_representations = simplify_representation(annotation.properties["representation_type"])
+                    speech_type = SpeechType.from_list(simple_representations)
+                    thought_representation = "thought_representation" in simple_representations
+                    if "narrator_speech" in annotation.properties["representation_type"]:
+                        pass
+                    event_type = EventType.from_tag_name(annotation.tag.name)
+                    iterative = annotation.properties.get("iterative", ["no"]) == ["yes"]
+                    mental = annotation.properties.get("mental", ["no"]) == ["yes"]
+                    if event_type == EventType.NON_EVENT:
+                        iterative = None
+                        mental = None
                     span_anno = SpanAnnotation(
                         text=annotation.text,
                         special_token_text=special_token_text,
-                        event_type=EventType.from_tag_name(annotation.tag.name),
+                        event_type=event_type,
+                        iterative=iterative,
+                        speech_type=speech_type,
+                        thought_representation=thought_representation,
+                        mental=mental,
                         document_text=collection.text.plain_text,
                         start=annotation.start_point,
                         end=annotation.end_point,
