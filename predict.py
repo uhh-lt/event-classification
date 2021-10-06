@@ -40,7 +40,7 @@ def main(segmented_json: str, out_path: str, model_path: str, device: str = "cud
     )
     model, tokenizer = get_model(model_path)
     model.to(device)
-    _, _, predictions = evaluate(loader, model, device=device)
+    _, _, predictions, _ = evaluate(loader, model, device=device)
     dataset.save_json(out_path, [EventType(p.item()) for p in predictions])
 
 
@@ -139,7 +139,7 @@ def dprose(model_path: str, output_name: str, device: str = "cuda:0", special_to
         )
         model, tokenizer = get_model(model_path)
         model.to(device)
-        _, _, predictions = evaluate(loader, model, device=device)
+        _, _, predictions, _ = evaluate(loader, model, device=device)
         # We only pass in one document, so we only use [0]
         data = dataset.get_annotation_json([EventType(p.item()) for p in predictions])[0]
         data["dprose_id"] = dprose_id

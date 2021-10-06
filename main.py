@@ -60,7 +60,8 @@ def train(train_loader, dev_loader, model, config: Config):
         if scheduler is not None:
             scheduler.step()
         if dev_loader is not None:
-            weighted_f1, macro_f1, _ = evaluate(dev_loader, model, config.device)
+            weighted_f1, macro_f1, _, extra_metrics = evaluate(dev_loader, model, config.device)
+            mlflow.log_metrics(extra_metrics)
             if config.optimize == "weighted f1":
                 f1: float = float(weighted_f1)
             elif config.optimize == "macro f1":
@@ -170,7 +171,6 @@ def main(config: Config):
     tokenizer.save_pretrained("tokenizer")
     model = ElectraForEventClassification.from_pretrained(
         config.pretrained_model,
-        num_labels=4,
         label_smoothing=config.label_smoothing,
     )
     mlflow.set_tracking_uri("file://" + hydra.utils.get_original_cwd() + "/mlruns")

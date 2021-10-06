@@ -51,18 +51,35 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
     predictions = []
     texts = defaultdict(list)
     labled_annotations = []
+    all_predictions = defaultdict(list)
+    all_labels = defaultdict(list)
     for input_data, gold_labels, annotations in tqdm(loader, desc="Evaluating"):
         out = model(**input_data.to(device))
-        for anno, label in zip(annotations, out.event_kind.cpu()):
+        for anno, label in zip(annotations, out.event_type.cpu()):
             labled_annotations.append((label, anno))
         if out_file is not None:
-            for anno, label, gold_label in zip(annotations, out.event_kind, gold_labels.event_kind):
-                out_data = anno.output_dict(label.item())
-                out_data["gold_label"] = EventType(gold_label.item()).to_string()
+            not_non_event_index = 0 # Counted up whenever an event is not a non-event
+            for i, anno in enumerate(annotations):
+                out_data = anno.output_dict(out.event_type[i].item())
+                out_data["gold_label"] = EventType(gold_labels.event_type[i].item()).to_string()
+                out_data["properties"] = dict()
+                for prop in ["mental", "iterative"]:
+                    out_data[prop] = getattr(gold_labels, prop)[not_non_event_index].item()
+                for prop in ["thought_representation", "speech_type"]:
+                    out_data[prop] = EventType(getattr(gold_labels, prop)[i].item()).to_string()
                 texts[anno.document_text].append(out_data)
-        predictions.append(out.event_kind.cpu())
+                if anno.event_type != EventType.NON_EVENT:
+                    not_non_event_index += 1
+        predictions.append(out.event_type.cpu())
+        for name in ["mental", "iterative"]:
+            all_predictions[name].append(torch.masked_select(getattr(out, name).cpu(), gold_labels.event_type != 0))
+            all_labels[name].append(getattr(gold_labels, name).cpu())
+            assert len(all_labels[name][-1]) == len(all_predictions[name][-1])
+        for name in ["speech_type", "thought_representation"]:
+            all_predictions[name].append(getattr(out, name).cpu())
+            all_labels[name].append(getattr(gold_labels, name).cpu())
         if gold_labels is not None:
-            gold.append(gold_labels.event_kind.cpu())
+            gold.append(gold_labels.event_type.cpu())
     for label, annotation in labled_annotations:
         logging.debug(
             f"=== Gold: {annotation.event_type}, predicted: {EventType(label.item())}"
@@ -95,7 +112,14 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
             )
         json.dump(out_list, out_file)
     if report is not None:
-        return report["weighted avg"]["f1-score"], report["macro avg"]["f1-score"], torch.cat(predictions).cpu()
+        extra_metrics = {}
+        for name, values in all_predictions.items():
+            extra_metrics[name] = classification_report(
+                torch.cat(values),
+                torch.cat(all_labels[name]),
+                output_dict=True
+            )
+        return report["weighted avg"]["f1-score"], report["macro avg"]["f1-score"], torch.cat(predictions).cpu(), {}
     else:
-        return None, None, torch.cat(predictions).cpu()
+        return None, None, torch.cat(predictions).cpu(), {}
 

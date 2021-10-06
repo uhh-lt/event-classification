@@ -19,9 +19,9 @@ EVENT_PROPERTIES = {
 
 @dataclass
 class EventClassificationOutput():
-    event_kind: torch.Tensor
+    event_type: torch.Tensor
     iterative: torch.Tensor
-    speech_representation: torch.Tensor
+    speech_type: torch.Tensor
     thought_representation: torch.Tensor
     mental: torch.Tensor
     loss: Optional[torch.Tensor] = None
@@ -48,13 +48,13 @@ class ElectraForEventClassification(ElectraPreTrainedModel):
     def __init__(self, config, label_smoothing: bool = True):
         super().__init__(config)
         if label_smoothing:
-            self.event_kind_loss = LabelSmoothingLoss(weight=EVENT_CLASS_WEIGHTS)
+            self.event_type_kind_loss = LabelSmoothingLoss(weight=EVENT_CLASS_WEIGHTS)
         else:
-            self.event_kind_loss = nn.CrossEntropyLoss()
+            self.event_type_loss = nn.CrossEntropyLoss()
         self.property_loss = nn.CrossEntropyLoss()
         self.electra = ElectraModel(config)
         self.config = config
-        self.event_kind = ClassificationHead(config, num_labels=EVENT_PROPERTIES["categories"])
+        self.event_type = ClassificationHead(config, num_labels=EVENT_PROPERTIES["categories"])
         self.iterative = ClassificationHead(config, num_labels=EVENT_PROPERTIES["iterative"])
 
         self.thought_embedding = nn.Sequential(
@@ -106,7 +106,7 @@ class ElectraForEventClassification(ElectraPreTrainedModel):
         )
 
         sequence_output = discriminator_hidden_states[0]
-        logits_kind = self.event_kind(sequence_output)
+        logits_kind = self.event_type(sequence_output)
         logits_iterative = self.iterative(sequence_output)
         thought_embedding = self.thought_embedding(sequence_output[:, 0, :])
         logits_speech = self.character_speech(thought_embedding)
@@ -115,20 +115,20 @@ class ElectraForEventClassification(ElectraPreTrainedModel):
 
         loss = None
         if labels is not None:
-            loss = self.event_type_critereon(logits_kind, labels.event_kind)
+            loss = self.event_type_critereon(logits_kind, labels.event_type)
             loss += self.binary_criterion(logits_thought_representation.squeeze(), labels.thought_representation)
             loss += self.speech_criterion(logits_speech, labels.speech_type)
             # only for all events that are not non events
-            mental_defined = torch.masked_select(logits_mental.squeeze(), labels.event_kind != 0)
+            mental_defined = torch.masked_select(logits_mental.squeeze(), labels.event_type != 0)
             loss += self.binary_criterion(mental_defined, labels.mental)
-            iterative_defined = torch.masked_select(logits_iterative.squeeze(), labels.event_kind != 0)
+            iterative_defined = torch.masked_select(logits_iterative.squeeze(), labels.event_type != 0)
             loss += self.binary_criterion(iterative_defined, labels.iterative)
 
         return EventClassificationOutput(
             loss=loss,
-            event_kind=torch.argmax(logits_kind, 1),
+            event_type=torch.argmax(logits_kind, 1),
             iterative=torch.argmax(logits_iterative, 1),
-            speech_representation=torch.argmax(logits_speech, 1),
+            speech_type=torch.argmax(logits_speech, 1),
             thought_representation=torch.argmax(logits_speech, 1),
             mental=torch.argmax(logits_mental, 1),
         )

@@ -15,10 +15,11 @@ from transformers import PreTrainedTokenizer
 
 @dataclass
 class EventClassificationLabels:
-    event_kind: torch.Tensor
-    iterative: torch.Tensor
+    event_type: torch.Tensor
     speech_type: torch.Tensor
     thought_representation: torch.Tensor
+    # These two are not defined for non_events
+    iterative: torch.Tensor
     mental: torch.Tensor
 
     def to(self, device):
@@ -163,7 +164,7 @@ class SpanAnnotation(NamedTuple):
             labels = None
         else:
             labels = EventClassificationLabels(
-                event_kind=torch.tensor([anno.event_type.value for anno in data]),
+                event_type=torch.tensor([anno.event_type.value for anno in data]),
                 mental=torch.tensor([anno.mental for anno in data if anno.event_type != EventType.NON_EVENT], dtype=torch.float),
                 iterative=torch.tensor([anno.iterative for anno in data if anno.event_type != EventType.NON_EVENT], dtype=torch.float),
                 speech_type=torch.tensor([anno.speech_type.value for anno in data]),
