@@ -2,6 +2,7 @@ import sys
 import json
 import bisect
 from sklearn.metrics import classification_report
+import torch
 import matplotlib.pyplot as plt
 
 from event_classify.datasets import EventType
@@ -43,5 +44,7 @@ for first, second in matches:
     preds.append(EventType.from_tag_name(second).value)
 print("Match start accuracy: ", correct_matches / num_matches)
 print(classification_report(trues, preds))
-_ = plot_confusion_matrix(trues, preds)
+gold_data_converted = torch.tensor([EventType(label).get_narrativity_ordinal() for label in trues], dtype=torch.int)
+predictions_converted = torch.tensor([EventType(prediction).get_narrativity_ordinal() for prediction in preds], dtype=torch.int)
+_ = plot_confusion_matrix(gold_data_converted, predictions_converted)
 plt.show()

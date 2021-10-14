@@ -1,21 +1,21 @@
 from collections import defaultdict
-import logging
 import json
-import seaborn as sns
+import logging
 
-from sklearn.metrics import confusion_matrix, classification_report
-from sklearn.metrics._plot.confusion_matrix import ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
+import mlflow
+import seaborn as sns
+from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics._plot.confusion_matrix import ConfusionMatrixDisplay
 import torch
 from tqdm import tqdm
 
 from event_classify.datasets import EventType
 
 
-def plot_confusion_matrix(target, hypothesis, normalize="true"):
+def plot_confusion_matrix(target, hypothesis, normalize="true", tick_names=["Non Event", "Stative Event", "Process", "Change of State"]):
     cm = confusion_matrix(target, hypothesis, normalize=normalize)
     cm2 = confusion_matrix(target, hypothesis, normalize=None)
-    tick_names = ["Non Event", "Change of State", "Process", "Stative Event"]
     ax = sns.heatmap(
         cm,
         vmin=0.0,
@@ -42,7 +42,7 @@ def plot_confusion_matrix(target, hypothesis, normalize="true"):
 
 
 @torch.no_grad()
-def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=False):
+def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=False, epoch=None):
     model.to(device)
     if device is None:
         device = model.device
@@ -63,10 +63,11 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
                 out_data = anno.output_dict(out.event_type[i].item())
                 out_data["gold_label"] = EventType(gold_labels.event_type[i].item()).to_string()
                 out_data["properties"] = dict()
-                for prop in ["mental", "iterative"]:
-                    out_data[prop] = getattr(gold_labels, prop)[not_non_event_index].item()
+                if anno.event_type != EventType.NON_EVENT:
+                    for prop in ["mental", "iterative"]:
+                        out_data["properties"][prop] = getattr(gold_labels, prop)[not_non_event_index].item()
                 for prop in ["thought_representation", "speech_type"]:
-                    out_data[prop] = EventType(getattr(gold_labels, prop)[i].item()).to_string()
+                    out_data["properties"][prop] = EventType(getattr(gold_labels, prop)[i].item()).to_string()
                 texts[anno.document_text].append(out_data)
                 if anno.event_type != EventType.NON_EVENT:
                     not_non_event_index += 1
@@ -93,13 +94,17 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
             torch.cat(gold), torch.cat(predictions), output_dict=True
         )
         logging.info(classification_report(torch.cat(gold), torch.cat(predictions)))
-    if save_confusion_matrix and len(gold) > 0:
-        plt.rc("text", usetex=True)
+    if (save_confusion_matrix or epoch is not None) and len(gold) > 0:
+        plt.rc("text")
         plt.rc("font", family="serif", size=12)
-        _ = plot_confusion_matrix(torch.cat(gold), torch.cat(predictions))
+        gold_data_converted = torch.tensor([EventType(gold_label.item()).get_narrativity_ordinal() for gold_label in torch.cat(gold)], dtype=torch.int)
+        predictions_converted = torch.tensor([EventType(prediction.item()).get_narrativity_ordinal() for prediction in torch.cat(predictions)], dtype=torch.int)
+        _ = plot_confusion_matrix(gold_data_converted, predictions_converted)
         plt.tight_layout()
         plt.gcf().subplots_adjust(left=0.2)
-        plt.savefig("confusion_matrix.pdf")
+        plt.savefig(f"confusion_matrix_event-types_{epoch}.pdf")
+        mlflow.log_artifact(f"confusion_matrix_event-types_{epoch}.pdf")
+        plt.clf()
     if out_file is not None:
         out_list = []
         for text, annotations in texts.items():
@@ -114,12 +119,21 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
     if report is not None:
         extra_metrics = {}
         for name, values in all_predictions.items():
-            extra_metrics[name] = classification_report(
+            plt.rc("text")
+            plt.rc("font", family="serif", size=12)
+            plot_confusion_matrix(torch.cat(values), torch.cat(all_labels[name]), tick_names="auto")
+            extra_metrics[name + " macro f1"] = classification_report(
                 torch.cat(values),
                 torch.cat(all_labels[name]),
                 output_dict=True
-            )
-        return report["weighted avg"]["f1-score"], report["macro avg"]["f1-score"], torch.cat(predictions).cpu(), {}
+            )["macro avg"]["f1-score"]
+            plt.tight_layout()
+            plt.gcf().subplots_adjust(left=0.2)
+            file_name = f"confusion_matrix_{name}_{epoch if epoch is not None else 'end'}.pdf"
+            plt.savefig(file_name)
+            plt.clf()
+            mlflow.log_artifact(file_name)
+        return report["weighted avg"]["f1-score"], report["macro avg"]["f1-score"], torch.cat(predictions).cpu(), extra_metrics
     else:
         return None, None, torch.cat(predictions).cpu(), {}
 

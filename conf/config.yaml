@@ -1,10 +1,15 @@
+# @package _global_
+defaults:
+    - override /hydra/sweeper: optuna
+    - override /hydra/sweeper/sampler: tpe
+
 learning_rate: 0.005
 patience: 10
-batch_size: 32
-epochs: 30
+batch_size: 16
+epochs: 60
 scheduler:
     enable: true
-    epochs: 30
+    epochs: 60
 device: "cuda:0"
 label_smoothing: true
 optimize: "weighted f1"
@@ -14,3 +19,20 @@ dataset:
     catma_dir: "."
     in_distribution: true
     special_tokens: true
+
+hydra:
+  sweeper:
+      sampler:
+          seed: 123
+      direction: maximize
+      study_name: first_try
+      storage: null
+      n_trials: 20
+      n_jobs: 1
+
+      search_space:
+          learning_rate:
+              type: float
+              low: 1e-6
+              high: 1e-3
+              log: true

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from collections import defaultdict
+from collections import defaultdict, Counter
 from dataclasses import dataclass
 import copy
 from enum import Enum
@@ -39,6 +39,16 @@ class EventType(Enum):
         out = torch.zeros(4)
         out[self.value] = 1.0
         return out
+
+    def get_narrativity_ordinal(self):
+        if self == EventType.NON_EVENT:
+            return 0
+        elif self == EventType.STATIVE_EVENT:
+            return 1
+        elif self == EventType.PROCESS:
+            return 2
+        elif self == EventType.CHANGE_OF_STATE:
+            return 3
 
     @staticmethod
     def from_tag_name(name: str):
@@ -92,7 +102,7 @@ class SpeechType(Enum):
         if "character_speech" in in_list:
             return SpeechType.CHARACTER
         elif "narrator_speech" in in_list:
-            return SpeechType.CHARACTER
+            return SpeechType.NARRATOR
         elif len(in_list) > 0:
             return SpeechType.NONE
         else:
@@ -235,6 +245,7 @@ class SimpleEventDataset(Dataset):
         super().__init__()
         self.annotations: List[SpanAnnotation] = []
         self.tagset = project.tagset_dict["EvENT-Tagset_3"]
+        stats = defaultdict(Counter)
         for collection in [project.ac_dict[coll] for coll in annotation_collections]:
             for annotation in collection.annotations:
                 if annotation.tag.name in ["Zweifelsfall", "change_of_episode"]:
@@ -272,9 +283,20 @@ class SimpleEventDataset(Dataset):
                         end=annotation.end_point,
                         spans=[(s.start, s.end) for s in merge_direct_neighbors(copy.deepcopy(annotation.selectors))],
                     )
+                    stats["speech_type"].update([speech_type])
+                    stats["event_type"].update([event_type])
+                    stats["thought_representation"].update([thought_representation])
+                    if event_type != EventType.NON_EVENT:
+                        stats["iterative"].update([iterative])
+                        stats["mental"].update([mental])
                     self.annotations.append(span_anno)
                 except ValueError as e:
                     logging.warning(f"Error parsing span annotation: {e}")
+        for field_name, variants in stats.items():
+            print(f"=== {field_name}")
+            total = sum(variants.values())
+            for variant_name, variant_count in variants.items():
+                print(f"\tWeight {variant_name}:", variant_count / total)
 
     def __getitem__(self, i: int):
         return self.annotations[i]
@@ -323,6 +345,7 @@ class JSONDataset(Dataset):
                 )
                 self.documents[title].append(span_anno)
                 self.annotations.append(span_anno)
+                print(f"Count thought repr: {thought_repr / total}")
 
     def get_annotation_json(self, predictions: List[EventType]) -> List[Dict[str, Any]]:
         out_data = []

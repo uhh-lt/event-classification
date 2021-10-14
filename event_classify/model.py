@@ -1,13 +1,16 @@
-from transformers import ElectraTokenizer, ElectraPreTrainedModel, ElectraModel
+from dataclasses import dataclass
 from typing import Optional
+
+import mlflow
 import torch
 from torch import nn
-from dataclasses import dataclass
-from event_classify.label_smoothing import LabelSmoothingLoss
+from transformers import ElectraModel, ElectraPreTrainedModel, ElectraTokenizer
+
 from event_classify.datasets import EventClassificationLabels
+from event_classify.label_smoothing import LabelSmoothingLoss
 
 
-EVENT_CLASS_WEIGHTS = torch.tensor([0.0003, 0.15, 0.0003, 0.0005])
+EVENT_CLASS_WEIGHTS = torch.tensor([1 / 0.35, 1 / 0.009, 1 / 0.405, 1 / 0.23])
 EVENT_PROPERTIES = {
     "categories": 4,
     "iterative": 1,
@@ -15,6 +18,23 @@ EVENT_PROPERTIES = {
     "thought_representation": 1,
     "mental": 1,
 }
+
+
+class MultiLossLayer(nn.Module):
+    def __init__(self, length):
+        """
+        Multi loss with learned parameters
+
+        The values for sigma are learned and give the loss of uncertain labels more weight.
+        """
+        super().__init__()
+        self.log_sigmas = nn.Parameter(torch.ones(length) * 0.5)
+
+    def forward(self, losses: torch.Tensor):
+        loss_scalers = 1 / (2 * torch.exp(self.log_sigmas))
+        for i, loss_scaler in enumerate(loss_scalers):
+            mlflow.log_metric(f"Scale loss {i}", float(loss_scalers[i].item()))
+        return torch.mean(loss_scalers * losses + self.log_sigmas)
 
 
 @dataclass
@@ -56,6 +76,7 @@ class ElectraForEventClassification(ElectraPreTrainedModel):
         self.config = config
         self.event_type = ClassificationHead(config, num_labels=EVENT_PROPERTIES["categories"])
         self.iterative = ClassificationHead(config, num_labels=EVENT_PROPERTIES["iterative"])
+        self.multi_loss = MultiLossLayer(5)
 
         self.thought_embedding = nn.Sequential(
             nn.Linear(config.hidden_size, config.hidden_size),
@@ -76,8 +97,10 @@ class ElectraForEventClassification(ElectraPreTrainedModel):
             nn.Dropout(config.hidden_dropout_prob),
             nn.Linear(config.hidden_size, EVENT_PROPERTIES["mental"]),
         )
-        self.binary_criterion = nn.BCEWithLogitsLoss()
-        self.speech_criterion = nn.CrossEntropyLoss()
+        self.thought_representation_criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(97 / 3))
+        self.mental_criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(77 / 23))
+        self.iterative_criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(83 / 17))
+        self.speech_criterion = nn.CrossEntropyLoss(weight=torch.tensor([1 / 0.52, 1 / 0.02, 1 / 0.45]))
         self.event_type_critereon = nn.CrossEntropyLoss(weight=EVENT_CLASS_WEIGHTS)
 
         self.init_weights()
@@ -110,19 +133,25 @@ class ElectraForEventClassification(ElectraPreTrainedModel):
         logits_iterative = self.iterative(sequence_output)
         thought_embedding = self.thought_embedding(sequence_output[:, 0, :])
         logits_speech = self.character_speech(thought_embedding)
-        logits_thought_representation = self.mental(thought_embedding)
+        logits_thought_representation = self.thought_representation(thought_embedding)
         logits_mental = self.mental(thought_embedding)
 
         loss = None
         if labels is not None:
-            loss = self.event_type_critereon(logits_kind, labels.event_type)
-            loss += self.binary_criterion(logits_thought_representation.squeeze(), labels.thought_representation)
-            loss += self.speech_criterion(logits_speech, labels.speech_type)
+            losses = []
+            losses.append(self.event_type_critereon(logits_kind, labels.event_type))
+            losses.append(self.thought_representation_criterion(logits_thought_representation.squeeze(), labels.thought_representation))
+            losses.append(self.speech_criterion(logits_speech, labels.speech_type))
             # only for all events that are not non events
             mental_defined = torch.masked_select(logits_mental.squeeze(), labels.event_type != 0)
-            loss += self.binary_criterion(mental_defined, labels.mental)
             iterative_defined = torch.masked_select(logits_iterative.squeeze(), labels.event_type != 0)
-            loss += self.binary_criterion(iterative_defined, labels.iterative)
+            if len(mental_defined) > 0:
+                losses.append(self.mental_criterion(mental_defined, labels.mental))
+                losses.append(self.iterative_criterion(iterative_defined, labels.iterative))
+            else:
+                losses.append(torch.tensor(0).to(self.device))
+                losses.append(torch.tensor(0).to(self.device))
+            loss = self.multi_loss(torch.stack(losses))
 
         return EventClassificationOutput(
             loss=loss,

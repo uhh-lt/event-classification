@@ -22,9 +22,6 @@ from event_classify.config import Config, DatasetConfig
 from event_classify.label_smoothing import LabelSmoothingLoss
 from event_classify.datasets import SimpleEventDataset, SpanAnnotation
 
-CLASS_WEIGHTS = torch.tensor([0.0003, 0.15, 0.0003, 0.0005])
-
-
 def add_special_tokens(model, tokenizer):
     tokenizer.add_special_tokens(
         {
@@ -54,13 +51,20 @@ def train(train_loader, dev_loader, model, config: Config):
             loss_epoch += float(loss.item())
             pbar.set_postfix({"mean epoch loss": loss_epoch / (i + 1)})
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+            old_multi_loss = model.multi_loss.log_sigmas.detach().clone()
             optimizer.step()
+            if model.multi_loss.log_sigmas.isnan().sum() > 0:
+                breakpoint()
             model.zero_grad()
             mlflow.log_metric("Loss", loss.item())
+            for x in range(5):
+                mlflow.log_metric(f"Sigma_{x + 1}", model.multi_loss.log_sigmas[x].item())
         if scheduler is not None:
             scheduler.step()
         if dev_loader is not None:
-            weighted_f1, macro_f1, _, extra_metrics = evaluate(dev_loader, model, config.device)
+            weighted_f1, macro_f1, _, extra_metrics = evaluate(dev_loader, model, config.device, epoch=epoch)
+            print("Logging metrics: ", extra_metrics)
             mlflow.log_metrics(extra_metrics)
             if config.optimize == "weighted f1":
                 f1: float = float(weighted_f1)
@@ -165,6 +169,12 @@ def print_target_weights(dataset):
 @hydra.main(config_name="conf/config")
 def main(config: Config):
     hydra_run_name = HydraConfig.get().run.dir.replace("outputs/", "").replace("/", "_")
+    mlflow.set_tracking_uri("file://" + hydra.utils.get_original_cwd() + "/mlruns")
+    with mlflow.start_run(run_name=hydra_run_name):
+        return _main(config)
+
+
+def _main(config: Config):
     tokenizer: ElectraTokenizer = ElectraTokenizer.from_pretrained(
         config.pretrained_model,
     )
@@ -173,7 +183,6 @@ def main(config: Config):
         config.pretrained_model,
         label_smoothing=config.label_smoothing,
     )
-    mlflow.set_tracking_uri("file://" + hydra.utils.get_original_cwd() + "/mlruns")
     mlflow.log_params(dict(config))
     add_special_tokens(model, tokenizer)
     datasets = get_datasets(config.dataset)
@@ -187,7 +196,6 @@ def main(config: Config):
     if dev_loader is not None:
         model = ElectraForEventClassification.from_pretrained(
             "best-model",
-            config.label_smoothing,
         )
     logging.info("Dev set results")
     evaluate(
@@ -197,13 +205,14 @@ def main(config: Config):
         out_file=open("predictions-dev.json", "w"),
     )
     logging.info("Test set results")
-    evaluate(
+    report = evaluate(
         test_loader,
         model,
         device=config.device,
         out_file=open("predictions.json", "w"),
         save_confusion_matrix=True,
     )
+    return report["weighted avg"]["f1-score"]
 
 
 if __name__ == "__main__":
