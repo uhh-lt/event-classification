@@ -205,14 +205,14 @@ def _main(config: Config):
         out_file=open("predictions-dev.json", "w"),
     )
     logging.info("Test set results")
-    report = evaluate(
+    weighted_f1, _, _, _ = evaluate(
         test_loader,
         model,
         device=config.device,
         out_file=open("predictions.json", "w"),
         save_confusion_matrix=True,
     )
-    return report["weighted avg"]["f1-score"]
+    return weighted_f1
 
 
 if __name__ == "__main__":
