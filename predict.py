@@ -12,6 +12,7 @@ import typer
 
 from event_classify.datasets import (
     EventType,
+    SpeechType,
     JSONDataset,
     SimpleEventDataset,
     SpanAnnotation,
@@ -40,8 +41,8 @@ def main(segmented_json: str, out_path: str, model_path: str, device: str = "cud
     )
     model, tokenizer = get_model(model_path)
     model.to(device)
-    _, _, predictions, _ = evaluate(loader, model, device=device)
-    dataset.save_json(out_path, [EventType(p.item()) for p in predictions])
+    result = evaluate(loader, model, device=device)
+    dataset.save_json(out_path, result)
 
 
 @app.command()
@@ -77,13 +78,15 @@ def gold_spans(model_path: str, device: str = "cuda:0", special_tokens: bool = T
         batch_size=16,
         collate_fn=lambda list_: SpanAnnotation.to_batch(list_, tokenizer),
     )
+    out_file = open("gold_spans.json", "w")
     evaluate(
         loader,
         model,
         device=device,
-        out_file=open("gold_spans.json", "w"),
+        out_file=out_file,
         save_confusion_matrix=True,
     )
+    out_file.close()
 
 
 @app.command()
@@ -139,9 +142,9 @@ def dprose(model_path: str, output_name: str, device: str = "cuda:0", special_to
         )
         model, tokenizer = get_model(model_path)
         model.to(device)
-        _, _, predictions, _ = evaluate(loader, model, device=device)
+        evaluation_result = evaluate(loader, model, device=device)
         # We only pass in one document, so we only use [0]
-        data = dataset.get_annotation_json([EventType(p.item()) for p in predictions])[0]
+        data = dataset.get_annotation_json(evaluation_result)[0]
         data["dprose_id"] = dprose_id
         json.dump(data, out_file)
         out_file.flush()
@@ -192,9 +195,9 @@ def plain_text_file(model_path: str, in_name: str, output_name: str, device: str
     )
     model, tokenizer = get_model(model_path)
     model.to(device)
-    _, _, predictions = evaluate(loader, model, device=device)
+    evaluation_result = evaluate(loader, model, device=device)
     # We only pass in one document, so we only use [0]
-    data = dataset.get_annotation_json([EventType(p.item()) for p in predictions])[0]
+    data = dataset.get_annotation_json(evaluation_result)[0]
     json.dump(data, out_file)
     out_file.flush()
     out_file.write("\n")

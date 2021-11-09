@@ -7,6 +7,7 @@ import json
 import logging
 from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Any
 
+from .evaluation_result import EvaluationResult
 import catma_gitlab as catma
 import torch
 from torch.utils.data import Dataset
@@ -92,11 +93,6 @@ class SpeechType(Enum):
     NARRATOR = 1
     NONE = 2
 
-    def to_onehot(self, device="cpu"):
-        out = torch.zeros(3, device=device)
-        out[self.value] = 1.0
-        return out
-
     @staticmethod
     def from_list(in_list: List[str]) -> SpeechType:
         if "character_speech" in in_list:
@@ -108,44 +104,18 @@ class SpeechType(Enum):
         else:
             raise ValueError("RepresentationType not specified")
 
+    def to_string(self) -> str:
+        if self == SpeechType.CHARACTER:
+            return "character"
+        elif self == SpeechType.NARRATOR:
+            return "narrator"
+        else:
+            return "none"
 
-class RepresentationType(Enum):
-    THOUGHT = 0
-    CHARACTER_SPEECH = 1
-    NARRATOR_SPEECH = 2
-    THOUGHT_CHARACTER_SPEECH = 3
-    THOUGHT_NARRATOR_SPEECH = 4
-
-    def to_onehot(self):
-        out = torch.zeros(4)
+    def to_onehot(self, device="cpu"):
+        out = torch.zeros(3, device=device)
         out[self.value] = 1.0
         return out
-
-    @staticmethod
-    def from_list(representation_list):
-        if len(representation_list) > 2:
-            raise ValueError("Representation list may only have a maximum of two values")
-        if "thought_representation" in representation_list:
-            if len(representation_list) == 2:
-                if "narrator_speech" in representation_list:
-                    return RepresentationType.THOUGHT_CHARACTER_SPEECH
-                elif "character_speech" in representation_list:
-                    return RepresentationType.THOUGHT_CHARACTER_SPEECH
-                else:
-                    raise ValueError("Invalid combination of representations")
-            else:
-                return RepresentationType.THOUGHT
-        else:
-            if len(representation_list) != 1:
-                raise ValueError("Only `thought_representation` allows for multiple values in representation list.")
-            elif representation_list == ["narrator_speech"]:
-                return RepresentationType.NARRATOR_SPEECH
-            elif representation_list == ["character_speech"]:
-                return RepresentationType.CHARACTER_SPEECH
-            else:
-                raise ValueError("Invalid representation type")
-
-
 
 
 class SpanAnnotation(NamedTuple):
@@ -218,12 +188,14 @@ class SpanAnnotation(NamedTuple):
         output.append(document[previous_end:previous_end + 100])
         return "".join(output)
 
-    def output_dict(self, predicted_label):
+    def output_dict(self, predictions):
         return {
             "start": self.start,
             "end": self.end,
             "spans": self.spans,
-            "predicted": EventType(predicted_label).to_string(),
+            "predicted": predictions["event_types"],
+            "additional_predictions": predictions,
+            # "predicted_narrator": SpeechType(predicted_narrator_label).to_string() if predicted_narrator_label is not None else None
         }
 
 
@@ -262,8 +234,6 @@ class SimpleEventDataset(Dataset):
                     simple_representations = simplify_representation(annotation.properties["representation_type"])
                     speech_type = SpeechType.from_list(simple_representations)
                     thought_representation = "thought_representation" in simple_representations
-                    if "narrator_speech" in annotation.properties["representation_type"]:
-                        pass
                     event_type = EventType.from_tag_name(annotation.tag.name)
                     iterative = annotation.properties.get("iterative", ["no"]) == ["yes"]
                     mental = annotation.properties.get("mental", ["no"]) == ["yes"]
@@ -338,6 +308,10 @@ class JSONDataset(Dataset):
                     text=text,
                     special_token_text=special_token_text,
                     event_type=event_type,
+                    iterative=None,
+                    mental=None,
+                    speech_type=None,
+                    thought_representation=None,
                     document_text=full_text,
                     start=annotation["start"],
                     end=annotation["end"],
@@ -345,34 +319,32 @@ class JSONDataset(Dataset):
                 )
                 self.documents[title].append(span_anno)
                 self.annotations.append(span_anno)
-                print(f"Count thought repr: {thought_repr / total}")
 
-    def get_annotation_json(self, predictions: List[EventType]) -> List[Dict[str, Any]]:
+    def get_annotation_json(self, predictions: EvaluationResult) -> List[Dict[str, Any]]:
         out_data = []
-        i = 0
-        if len(predictions) > 0 and len(predictions) != len(self.annotations):
-            raise ValueError("Prediction list should be the length of the list of annotations")
         for title, document in self.documents.items():
             out_doc = {
                 "title": title,
                 "text": None,
                 "annotations": []
             }
-            for annotation in document:
+            prediction_list = predictions.get_prediction_lists()
+            assert len(prediction_list["event_types"]) == len(self.annotations)
+            for i, annotation in enumerate(document):
                 if out_doc["text"] is None:
                     out_doc["text"] = annotation.document_text
-                try:
-                    prediction = predictions[i]
-                except IndexError:
-                    prediction = None
-                out_doc["annotations"].append(annotation.output_dict(prediction))
-                i += 1
+                out_doc["annotations"].append(
+                    annotation.output_dict({
+                        k: v[i].to_string() if hasattr(v[i], "to_string") else v[i]
+                        for k, v in prediction_list.items()
+                    })
+                )
             out_doc["annotations"] = list(sorted(out_doc["annotations"], key=lambda d: d["start"]))
             out_data.append(out_doc)
         return out_data
 
-    def save_json(self, out_path: str, predictions: List[EventType] = []):
-        out_data = self.get_annotation_json(predictions)
+    def save_json(self, out_path: str, prediction: EvaluationResult):
+        out_data = self.get_annotation_json(prediction)
         out_file = open(out_path, "w")
         json.dump(out_data, out_file)
 

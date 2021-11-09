@@ -1,4 +1,5 @@
-from transformers import ElectraTokenizer, ElectraForSequenceClassification
+from transformers import ElectraTokenizer
+from .model import ElectraForEventClassification
 from .datasets import EventType
 import os
 from typing import List
@@ -9,7 +10,7 @@ def get_model(model_path: str):
     tokenizer: ElectraTokenizer = ElectraTokenizer.from_pretrained(
         os.path.join(model_path, "tokenizer")
     )
-    model = ElectraForSequenceClassification.from_pretrained(
+    model = ElectraForEventClassification.from_pretrained(
         os.path.join(model_path, "best-model"),
         num_labels=4,
     )

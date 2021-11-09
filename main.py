@@ -25,7 +25,7 @@ from event_classify.datasets import SimpleEventDataset, SpanAnnotation
 def add_special_tokens(model, tokenizer):
     tokenizer.add_special_tokens(
         {
-            "additional_special_tokens": ["<EE>", "<SE>"],
+            "additional_special_tokens": ["<ee>", "<se>"],
         }
     )
     model.resize_token_embeddings(len(tokenizer))
@@ -51,6 +51,7 @@ def train(train_loader, dev_loader, model, config: Config):
             loss_epoch += float(loss.item())
             pbar.set_postfix({"mean epoch loss": loss_epoch / (i + 1)})
             loss.backward()
+            # Gradient clipping
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             old_multi_loss = model.multi_loss.log_sigmas.detach().clone()
             optimizer.step()
@@ -63,23 +64,25 @@ def train(train_loader, dev_loader, model, config: Config):
         if scheduler is not None:
             scheduler.step()
         if dev_loader is not None:
-            weighted_f1, macro_f1, _, extra_metrics = evaluate(dev_loader, model, config.device, epoch=epoch)
-            print("Logging metrics: ", extra_metrics)
-            mlflow.log_metrics(extra_metrics)
+            evaluation_results = evaluate(dev_loader, model, config.device, epoch=epoch)
+            print("Logging metrics: ", evaluation_results.extra_metrics)
+            mlflow.log_metrics(evaluation_results.extra_metrics)
+            assert evaluation_results.macro_f1 is not None
+            assert evaluation_results.weighted_f1 is not None
             if config.optimize == "weighted f1":
-                f1: float = float(weighted_f1)
+                f1: float = float(evaluation_results.weighted_f1)
             elif config.optimize == "macro f1":
-                f1: float = float(macro_f1)
+                f1: float = float(evaluation_results.macro_f1)
             else:
                 logging.warning("Invalid optimization metric, defaulting to weighted.")
-                f1 = weighted_f1
+                f1 = evaluation_results.weighted_f1
             if (len(f1s) > 0 and f1 > max(f1s)) or len(f1s) == 0:
                 model.save_pretrained("best-model")
             f1s.append(f1)
             if scheduler is not None:
                 mlflow.log_metric("Learning Rate", scheduler.get_last_lr()[0], epoch)
-            mlflow.log_metric("Weighted F1", weighted_f1, epoch)
-            mlflow.log_metric("Macro F1", macro_f1, epoch)
+            mlflow.log_metric("Weighted F1", evaluation_results.weighted_f1, epoch)
+            mlflow.log_metric("Macro F1", evaluation_results.macro_f1, epoch)
             if len(f1s) > 0 and max(f1s) not in f1s[-config.patience :]:
                 logging.info("Ran out of patience, stopping training.")
                 return
@@ -205,14 +208,14 @@ def _main(config: Config):
         out_file=open("predictions-dev.json", "w"),
     )
     logging.info("Test set results")
-    weighted_f1, _, _, _ = evaluate(
+    results = evaluate(
         test_loader,
         model,
         device=config.device,
         out_file=open("predictions.json", "w"),
         save_confusion_matrix=True,
     )
-    return weighted_f1
+    return results.weighted_f1
 
 
 if __name__ == "__main__":

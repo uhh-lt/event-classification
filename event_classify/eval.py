@@ -1,6 +1,8 @@
 from collections import defaultdict
 import json
 import logging
+from dataclasses import dataclass
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import mlflow
@@ -10,7 +12,8 @@ from sklearn.metrics._plot.confusion_matrix import ConfusionMatrixDisplay
 import torch
 from tqdm import tqdm
 
-from event_classify.datasets import EventType
+from .datasets import EventType, SpeechType
+from .evaluation_result import EvaluationResult
 
 
 def plot_confusion_matrix(target, hypothesis, normalize="true", tick_names=["Non Event", "Stative Event", "Process", "Change of State"]):
@@ -60,25 +63,37 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
         if out_file is not None:
             not_non_event_index = 0 # Counted up whenever an event is not a non-event
             for i, anno in enumerate(annotations):
-                out_data = anno.output_dict(out.event_type[i].item())
+                out_data = anno.output_dict({
+                    "event_types": EventType(out.event_type[i].item()).to_string()
+                })
                 out_data["gold_label"] = EventType(gold_labels.event_type[i].item()).to_string()
-                out_data["properties"] = dict()
+                out_data["additional_predictions"] = dict()
+                out_data["additional_labels"] = dict()
                 if anno.event_type != EventType.NON_EVENT:
                     for prop in ["mental", "iterative"]:
-                        out_data["properties"][prop] = getattr(gold_labels, prop)[not_non_event_index].item()
-                for prop in ["thought_representation", "speech_type"]:
-                    out_data["properties"][prop] = EventType(getattr(gold_labels, prop)[i].item()).to_string()
+                        out_data["additional_labels"][prop] = bool(getattr(gold_labels, prop)[not_non_event_index].item())
+                        out_data["additional_predictions"][prop] = bool(getattr(out, prop)[not_non_event_index].item())
+                out_data["additional_labels"]["speech_type"] = SpeechType(gold_labels.speech_type[i].item()).to_string()
+                out_data["additional_predictions"]["speech_type"] = SpeechType(out.speech_type[i].item()).to_string()
+                out_data["additional_labels"]["thought_representation"] = bool(gold_labels.thought_representation[i].item())
+                out_data["additional_predictions"]["thought_representation"] = bool(out.thought_representation[i].item())
                 texts[anno.document_text].append(out_data)
                 if anno.event_type != EventType.NON_EVENT:
                     not_non_event_index += 1
         predictions.append(out.event_type.cpu())
         for name in ["mental", "iterative"]:
-            all_predictions[name].append(torch.masked_select(getattr(out, name).cpu(), gold_labels.event_type != 0))
-            all_labels[name].append(getattr(gold_labels, name).cpu())
-            assert len(all_labels[name][-1]) == len(all_predictions[name][-1])
+            if gold_labels is not None:
+                selector = gold_labels.event_type != 0
+            else:
+                selector = out.event_type != 0
+            all_predictions[name].append(torch.masked_select(getattr(out, name).cpu(), selector))
+            if gold_labels is not None:
+                all_labels[name].append(getattr(gold_labels, name).cpu())
+                assert len(all_labels[name][-1]) == len(all_predictions[name][-1])
         for name in ["speech_type", "thought_representation"]:
             all_predictions[name].append(getattr(out, name).cpu())
-            all_labels[name].append(getattr(gold_labels, name).cpu())
+            if gold_labels is not None:
+                all_labels[name].append(getattr(gold_labels, name).cpu())
         if gold_labels is not None:
             gold.append(gold_labels.event_type.cpu())
     for label, annotation in labled_annotations:
@@ -116,24 +131,68 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
                 }
             )
         json.dump(out_list, out_file)
+    all_predictions = {name: torch.cat(values) for name, values in all_predictions.items()}
+    all_labels = {name: torch.cat(values) for name, values in all_labels.items()}
     if report is not None:
         extra_metrics = {}
+        all_predictions["edge_case_speech_type"] = [pred
+            for pred, has_quote
+            in zip(all_predictions["speech_type"], contains_quotes) if not has_quote
+        ]
+        all_labels["edge_case_speech_type"] = [label
+            for label, has_quote
+            in zip(all_labels["speech_type"], contains_quotes) if not has_quote
+        ]
         for name, values in all_predictions.items():
             plt.rc("text")
             plt.rc("font", family="serif", size=12)
-            plot_confusion_matrix(torch.cat(values), torch.cat(all_labels[name]), tick_names="auto")
-            extra_metrics[name + " macro f1"] = classification_report(
-                torch.cat(values),
-                torch.cat(all_labels[name]),
+            plot_confusion_matrix(all_labels[name], values, tick_names="auto")
+            report = classification_report(
+                all_labels[name],
+                values,
                 output_dict=True
-            )["macro avg"]["f1-score"]
+            )
+            if name == "speech_type":
+                print("Number of character speech examples:", report['0']["support"])
+                print("Number of narrator speech examples:", report['1']["support"])
+                print(classification_report(
+                    all_labels[name],
+                    values,
+                ))
+            if name == "edge_case_speech_type":
+                print("Number of character speech examples with filtering:", report['0']["support"])
+                print("Number of narrator speech examples with filtering:", report['1']["support"])
+                print(classification_report(
+                    all_labels[name],
+                    values,
+                ))
+            extra_metrics[name + " macro f1"] = report["macro avg"]["f1-score"]
+            extra_metrics[name + " weighted f1"] = report["weighted avg"]["f1-score"]
+            try:
+                extra_metrics[name + " _ 1"] = report["1.0"]["f1-score"]
+                extra_metrics[name + " _ 0"] = report["0.0"]["f1-score"]
+            except KeyError:
+                extra_metrics[name + " _ 1"] = report["1"]["f1-score"]
+                extra_metrics[name + " _ 0"] = report["0"]["f1-score"]
             plt.tight_layout()
             plt.gcf().subplots_adjust(left=0.2)
             file_name = f"confusion_matrix_{name}_{epoch if epoch is not None else 'end'}.pdf"
             plt.savefig(file_name)
             plt.clf()
             mlflow.log_artifact(file_name)
-        return report["weighted avg"]["f1-score"], report["macro avg"]["f1-score"], torch.cat(predictions).cpu(), extra_metrics
+        return EvaluationResult(
+            weighted_f1=report["weighted avg"]["f1-score"],
+            macro_f1=report["macro avg"]["f1-score"],
+            predictions=torch.cat(predictions).cpu(),
+            extra_metrics=extra_metrics,
+            extra_labels=all_labels,
+            extra_predictions=all_predictions,
+        )
     else:
-        return None, None, torch.cat(predictions).cpu(), {}
-
+        return EvaluationResult(
+            weighted_f1=None,
+            macro_f1=None,
+            predictions=torch.cat(predictions).cpu(),
+            extra_labels=all_labels,
+            extra_predictions=all_predictions,
+        )
