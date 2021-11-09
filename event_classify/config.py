@@ -37,3 +37,4 @@ class Config():
     dataset: DatasetConfig
     pretrained_model: str
     label_smoothing: bool
+    loss_report_frequency: int

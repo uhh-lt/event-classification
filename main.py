@@ -43,6 +43,7 @@ def train(train_loader, dev_loader, model, config: Config):
         )
     for epoch in range(config.epochs):
         loss_epoch: float = 0.0
+        losses = []
         model.train()
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
         for i, (input_data, labels, _) in enumerate(pbar):
@@ -50,6 +51,7 @@ def train(train_loader, dev_loader, model, config: Config):
             loss = out.loss
             loss_epoch += float(loss.item())
             pbar.set_postfix({"mean epoch loss": loss_epoch / (i + 1)})
+            losses.append(loss.item())
             loss.backward()
             # Gradient clipping
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
@@ -58,7 +60,10 @@ def train(train_loader, dev_loader, model, config: Config):
             if model.multi_loss.log_sigmas.isnan().sum() > 0:
                 breakpoint()
             model.zero_grad()
-            mlflow.log_metric("Loss", loss.item())
+            if i % config.loss_report_frequency == 0:
+                mlflow.log_metric("Loss", sum(losses) / len(losses), i)
+            while len(losses) > config.loss_report_frequency:
+                losses.pop(0)
             for x in range(5):
                 mlflow.log_metric(f"Sigma_{x + 1}", model.multi_loss.log_sigmas[x].item())
         if scheduler is not None:
