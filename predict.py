@@ -21,7 +21,7 @@ from event_classify.eval import evaluate
 from event_classify.parser import Parser
 import event_classify.preprocessing
 from event_classify.preprocessing import build_pipeline
-from event_classify.util import get_model
+from event_classify.util import get_model, split_text
 
 app = typer.Typer()
 
@@ -202,45 +202,6 @@ def plain_text_file(model_path: str, in_name: str, output_name: str, device: str
     out_file.flush()
     out_file.write("\n")
     out_file.flush()
-
-class SubDoc(NamedTuple):
-    offset: int
-    text: str
-
-
-def split_text(text: str, allowed_split=".\n") -> List[SubDoc]:
-    """
-    Split text into a number of sub strings managable for spacy.
-
-    This could fail for abritrary sequences but the books in d-prose all have
-    seem to have '.\n'
-    """
-    total = len(text)
-    # This is super conservative spacy seems to be able to do >300k tokens on 12GB VRAM
-    max_segment_length = 100000
-    segments = text.split(allowed_split)
-    out = []
-    current_split = []
-    for i, segment in enumerate(segments):
-        if len(segment) > max_segment_length:
-            if allowed_split != ". ":
-                # Try again with the double newline strategy
-                return split_text(text, allowed_split=". ")
-            else:
-                raise ValueError("Document has too few split options.")
-        if (sum(len(s) for s in current_split) + len(segment)) <= max_segment_length:
-            if i == len(segments) - 1:
-                current_split.append(segment)
-            else:
-                current_split.append(segment + allowed_split)
-        else:
-            out.append(SubDoc(text="".join(current_split), offset=sum(len(split.text) for split in out)))
-            if i == len(segments) - 1:
-                current_split = [segment]
-            else:
-                current_split = [segment + allowed_split]
-    out.append(SubDoc(text="".join(current_split), offset=sum(len(split.text) for split in out)))
-    return out
 
 
 if __name__ == "__main__":
