@@ -6,12 +6,38 @@ from enum import Enum
 import json
 import logging
 from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Any
+import fnmatch
 
 from .evaluation_result import EvaluationResult
 import catma_gitlab as catma
 import torch
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
+
+
+ALL_ANNOTATION_COLLECTIONS = [
+    "Verwandlung_MV",
+    "Verwandlung_MW",
+    "Effi_Briest_GS",
+    "Effi_Briest_MW",
+    "Eckbert_AN",
+    "Eckbert_MW",
+    "Judenbuche_AN",
+    "Judenbuche_GS",
+    "Krambambuli_GS",
+    "Krambambuli_MW",
+    "Erdbeben_MW",
+    "Erdbeben_GS"
+]
+
+
+def get_annotation_collections(exclude: List[str] = []):
+    to_remove = set()
+    for pattern in exclude:
+        for collection in ALL_ANNOTATION_COLLECTIONS:
+            if fnmatch.fnmatch(collection, pattern):
+                to_remove.add(collection)
+    return list(set(ALL_ANNOTATION_COLLECTIONS) - to_remove), list(to_remove)
 
 
 @dataclass

@@ -16,6 +16,7 @@ import mlflow
 from tqdm import tqdm
 from transformers import ElectraTokenizer, ElectraForSequenceClassification
 
+import event_classify.datasets
 from event_classify.eval import evaluate
 from event_classify.model import ElectraForEventClassification
 from event_classify.config import Config, DatasetConfig
@@ -100,23 +101,12 @@ def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
         filter_intrinsic_markup=False,
     )
     if config.in_distribution:
-        all_annotation_collections = [
-            "Verwandlung_MV",
-            "Verwandlung_MW",
-            "Effi_Briest_GS",
-            "Effi_Briest_MW",
-            "Eckbert_AN",
-            "Eckbert_MW",
-            "Judenbuche_AN",
-            "Judenbuche_GS",
-            "Krambambuli_GS",
-            "Krambambuli_MW",
-            "Erdbeben_MW",
-            "Erdbeben_GS"
-        ]
+        included_collections, _ = event_classify.datasets.get_annotation_collections(
+            config.excluded_collections,
+        )
         dataset = SimpleEventDataset(
             project,
-            all_annotation_collections,
+            included_collections,
             include_special_tokens=config.special_tokens,
         )
         total = len(dataset)
@@ -129,9 +119,12 @@ def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
             generator=torch.Generator().manual_seed(13),
         )
     else:
+        included_collections, ood_collections = event_classify.datasets.get_annotation_collections(
+            config.excluded_collections,
+        )
         in_distribution_dataset = SimpleEventDataset(
             project,
-            ["Effi_Briest_MW", "Krambambuli_MW"],
+            included_collections,
             include_special_tokens=config.special_tokens,
         )
         train_size = math.floor(len(in_distribution_dataset) * 0.9)
@@ -143,7 +136,7 @@ def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
         )
         test_dataset = SimpleEventDataset(
             project,
-            ["Verwandlung_MV"],
+            ood_collections,
             include_special_tokens=config.special_tokens,
         )
     return train_dataset, dev_dataset, test_dataset

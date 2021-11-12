@@ -13,6 +13,7 @@ scheduler:
 device: "cuda:0"
 label_smoothing: true
 optimize: "weighted f1"
+excluded_collections: []
 pretrained_model: "german-nlp-group/electra-base-german-uncased"
 loss_report_frequency: 100
 dataset:

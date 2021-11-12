@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import List
 from omegaconf import MISSING
 
 
@@ -38,3 +39,4 @@ class Config():
     pretrained_model: str
     label_smoothing: bool
     loss_report_frequency: int
+    excluded_collections: List[str]
