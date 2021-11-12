@@ -13,10 +13,10 @@ scheduler:
 device: "cuda:0"
 label_smoothing: true
 optimize: "weighted f1"
-excluded_collections: []
 pretrained_model: "german-nlp-group/electra-base-german-uncased"
-loss_report_frequency: 100
+loss_report_frequency: 1000
 dataset:
+    excluded_collections: []
     catma_uuid: "CATMA_DD5E9DF1-0F5C-4FBD-B333-D507976CA3C7_EvENT_root"
     catma_dir: "."
     in_distribution: true
@@ -38,3 +38,12 @@ hydra:
               low: 1e-6
               high: 1e-3
               log: true
+          'dataset.excluded_collections':
+              type: categorical
+              choices:
+                  - ["Verwandlung_*"]
+                  - ["Effi_Briest_*"]
+                  - ["Eckbert_*"]
+                  - ["Judenbuche_*"]
+                  - ["Krambambuli_*"]
+                  - ["Erdbeben_*"]

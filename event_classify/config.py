@@ -12,6 +12,7 @@ class DatasetConfig():
     catma_dir: str
     in_distribution: bool
     special_tokens: bool
+    excluded_collections: List[str]
 
 
 @dataclass
@@ -39,4 +40,3 @@ class Config():
     pretrained_model: str
     label_smoothing: bool
     loss_report_frequency: int
-    excluded_collections: List[str]
