@@ -192,7 +192,7 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
         return EvaluationResult(
             weighted_f1=None,
             macro_f1=None,
-            predictions=torch.cat(predictions).cpu(),
+            predictions=torch.cat(predictions).cpu() if len(predictions) > 0 else torch.tensor([]),
             extra_labels=all_labels,
             extra_predictions=all_predictions,
         )

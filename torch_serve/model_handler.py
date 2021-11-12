@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from ts.torch_handler.base_handler import BaseHandler
 from transformers import BertTokenizer, ElectraTokenizer
 from transformers.models.bert import BasicTokenizer
+import spacy
 
 import event_classify.preprocessing
 from event_classify.datasets import (
@@ -29,6 +30,7 @@ class EventHandler(BaseHandler):
         model_dir = properties.get("model_dir")
         self.batch_size = properties.get("batch_size")
 
+        spacy.require_gpu(properties.get("gpu_id"))
         self.nlp = build_pipeline(Parser.SPACY)
         properties = context.system_properties
         self.config = get_config(os.path.join(model_dir, "config"))
@@ -70,9 +72,15 @@ class EventHandler(BaseHandler):
 
 
     def postprocess(self, inference_output):
-        assert len(inference_output) == 1
+        assert len(inference_output) == 2
         dataset, evaluation_result = inference_output
-        out_data = dataset.get_annotation_json(evaluation_result)[0]
+        try:
+            out_data = dataset.get_annotation_json(evaluation_result)[0]
+        except IndexError:
+            out_data = {
+                "annotations": [],
+                "text": "",
+            }
         return [out_data]
 
     def inference(self, data, *args, **kwargs):

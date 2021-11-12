@@ -194,6 +194,7 @@ class SpanAnnotation(NamedTuple):
             "end": self.end,
             "spans": self.spans,
             "predicted": predictions["event_types"],
+            "predicted_score": EventType.from_tag_name(predictions["event_types"]).get_narrativity_score(),
             "additional_predictions": predictions,
             # "predicted_narrator": SpeechType(predicted_narrator_label).to_string() if predicted_narrator_label is not None else None
         }

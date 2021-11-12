@@ -35,10 +35,9 @@ ln -s "$(pwd)/event_classify" $TEMP_DIR
 
 $ARCHIVER \
     --model-name $1 \
-    --model-file torch_serve/model.py \
     --handler torch_serve/model_handler.py \
     --extra-files $TEMP_DIR,torch_serve \
-    --archive-format no-archive \
+    --archive-format default \
     --requirements-file requirements.txt \
     -v $VERSION \
     --runtime python3 \
