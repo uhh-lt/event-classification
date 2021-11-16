@@ -56,17 +56,15 @@ def train(train_loader, dev_loader, model, config: Config):
             loss.backward()
             # Gradient clipping
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-            old_multi_loss = model.multi_loss.log_sigmas.detach().clone()
             optimizer.step()
-            if model.multi_loss.log_sigmas.isnan().sum() > 0:
-                breakpoint()
             model.zero_grad()
             if i % config.loss_report_frequency == 0:
                 mlflow.log_metric("Loss", sum(losses) / len(losses), i)
             while len(losses) > config.loss_report_frequency:
                 losses.pop(0)
-            for x in range(5):
-                mlflow.log_metric(f"Sigma_{x + 1}", model.multi_loss.log_sigmas[x].item())
+            if i % config.loss_report_frequency == 0 and config.dynamic_loss_weighting:
+                for x in range(len(config.optimize_outputs)):
+                    mlflow.log_metric(f"Sigma_{x + 1}", model.multi_loss.log_sigmas[x].item())
         if scheduler is not None:
             scheduler.step()
         if dev_loader is not None:
@@ -182,7 +180,7 @@ def _main(config: Config):
     tokenizer.save_pretrained("tokenizer")
     model = ElectraForEventClassification.from_pretrained(
         config.pretrained_model,
-        label_smoothing=config.label_smoothing,
+        event_config=config,
     )
     mlflow.log_params(dict(config))
     add_special_tokens(model, tokenizer)
@@ -197,6 +195,7 @@ def _main(config: Config):
     if dev_loader is not None:
         model = ElectraForEventClassification.from_pretrained(
             "best-model",
+            event_config=config,
         )
     logging.info("Dev set results")
     evaluate(

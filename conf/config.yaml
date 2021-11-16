@@ -15,6 +15,9 @@ label_smoothing: true
 optimize: "weighted f1"
 pretrained_model: "german-nlp-group/electra-base-german-uncased"
 loss_report_frequency: 1000
+optimize_outputs: ["event_kind"] # optionally add any of ["thought_representation", "mental", "iterative", "speech"]
+dynamic_loss_weighting: False
+static_loss_weights: [1.0]
 dataset:
     excluded_collections: []
     catma_uuid: "CATMA_DD5E9DF1-0F5C-4FBD-B333-D507976CA3C7_EvENT_root"
