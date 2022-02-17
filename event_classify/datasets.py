@@ -8,6 +8,10 @@ import logging
 from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Any
 import fnmatch
 
+import event_classify.preprocessing
+from event_classify.parser import Parser
+from event_classify.util import split_text
+
 from .evaluation_result import EvaluationResult
 import catma_gitlab as catma
 import torch
@@ -222,13 +226,61 @@ class SpanAnnotation(NamedTuple):
             "predicted": predictions["event_types"],
             "predicted_score": EventType.from_tag_name(predictions["event_types"]).get_narrativity_score(),
             "additional_predictions": predictions,
-            # "predicted_narrator": SpeechType(predicted_narrator_label).to_string() if predicted_narrator_label is not None else None
         }
 
 
 def simplify_representation(repr_list):
     repr_list = [t.replace("_1", "").replace("_2", "_").replace("_3", "") for t in repr_list]
     return repr_list
+
+
+class PlainTextDataset(Dataset):
+    def __init__(self, text: str, spacy_device: str = "cpu", language: str = "de"):
+        if spacy_device.startswith("cuda"):
+            event_classify.preprocessing.use_gpu()
+        nlp = event_classify.preprocessing.build_pipeline(Parser.SPACY, language)
+        splits = split_text(text)
+        self.all_annotations = []
+        # Sanity check, splitting should not change text!
+        assert text == "".join(split.text for split in splits)
+        for split in splits:
+            doc = nlp(split.text)
+            annotations = event_classify.preprocessing.get_annotation_dicts(doc)
+            for annotation in annotations:
+                annotation["start"] += split.offset
+                annotation["end"] += split.offset
+                new_spans = []
+                for span in annotation["spans"]:
+                    new_spans.append((
+                        span[0] + split.offset,
+                        span[1] + split.offset,
+                    ))
+                annotation["spans"] = new_spans
+            for annotation in annotations:
+                self.all_annotations.append(SpanAnnotation(
+                    text=text[annotation["start"]:annotation["end"]],
+                    special_token_text=SpanAnnotation.build_special_token_text_from_json(
+                        annotation,
+                        text,
+                        include_special_tokens=True,
+                    ),
+                    iterative=None,
+                    speech_type=SpeechType.NONE,
+                    thought_representation=False,
+                    mental=None,
+                    event_type=None,
+                    document_text=text,
+                    # These annotate the start and end offsets in the document string
+                    start=annotation["start"],
+                    end=annotation["end"],
+                    spans=annotation["spans"],
+                ))
+
+    def __getitem__(self, i: int):
+        return self.all_annotations[i]
+
+    def __len__(self):
+        return len(self.all_annotations)
 
 
 class SimpleEventDataset(Dataset):
