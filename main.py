@@ -66,6 +66,7 @@ def train(train_loader, dev_loader, model, config: Config):
                 for x in range(len(config.optimize_outputs)):
                     mlflow.log_metric(f"Sigma_{x + 1}", model.multi_loss.log_sigmas[x].item())
         if scheduler is not None:
+            mlflow.log_metric("Learning Rate", scheduler.get_last_lr()[0], epoch)
             scheduler.step()
         if dev_loader is not None:
             evaluation_results = evaluate(dev_loader, model, config.device, epoch=epoch)
