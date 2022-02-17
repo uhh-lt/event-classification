@@ -27,19 +27,27 @@ def to_ranges(tokens):
             end = None
 
 
+def is_german_verb(tag):
+    return tag.startswith("V") and tag.endswith("FIN")
+
+
+def is_english_verb(tag):
+    return tag.startswith("VB") and len(tag) != 2
+
+
 @Language.component("event_segmentation")
 def event_segmentation(doc):
     processed = set()
     for token in doc:
         out_ranges = []
-        if token.tag_.startswith("V") and token.tag_.endswith("FIN") and (token not in processed):
+        if (is_english_verb(token.tag_) or is_german_verb(token.tag_)) and (token not in processed):
             recursed = recurse_children(token, blacklist=list(processed), whitelist=[token])
             processed |= set(recursed)
             processed.add(token)
             span_indexes = [t.i for t in recursed] + [token.i]
             if token.head.tag_ == "KON":
                 span_indexes.append(token.head.i)
-            # Unsure uniqueness:
+            # Ensure uniqueness:
             span_indexes = list(set(span_indexes))
             ranges = list(to_ranges(span_indexes))
             for i, r in enumerate(ranges):
@@ -81,8 +89,8 @@ def helper_recurse_children(tokens, blacklist=(), whitelist=()):
             return
         children = t.children
         child_tags = [c.tag_ for c in children]
-        has_verb_child = any(t.endswith("FIN") and t.startswith("V") for t in child_tags)
-        is_verb = t.tag_.startswith("V") and t.tag_.endswith("FIN")
+        has_verb_child = any(is_german_verb(t) or is_english_verb(t) for t in child_tags)
+        is_verb = is_german_verb(t.tag_) or is_english_verb(t.tag_)
         # Skip any empty tokens
         if t.text.strip() == "":
             continue
