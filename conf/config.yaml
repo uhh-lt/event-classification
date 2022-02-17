@@ -6,10 +6,10 @@ defaults:
 learning_rate: 0.005
 patience: 10
 batch_size: 16
-epochs: 60
+epochs: 30
 scheduler:
     enable: true
-    epochs: 60
+    epochs: 30
 device: "cuda:0"
 label_smoothing: true
 optimize: "weighted f1"
