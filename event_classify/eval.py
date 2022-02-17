@@ -135,14 +135,7 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
     all_labels = {name: torch.cat(values) for name, values in all_labels.items()}
     if report is not None:
         extra_metrics = {}
-        all_predictions["edge_case_speech_type"] = [pred
-            for pred, has_quote
-            in zip(all_predictions["speech_type"], contains_quotes) if not has_quote
-        ]
-        all_labels["edge_case_speech_type"] = [label
-            for label, has_quote
-            in zip(all_labels["speech_type"], contains_quotes) if not has_quote
-        ]
+        event_kind_report = None
         for name, values in all_predictions.items():
             plt.rc("text")
             plt.rc("font", family="serif", size=12)
@@ -166,6 +159,8 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
                     all_labels[name],
                     values,
                 ))
+            if name == "speech_type":
+                event_kind_report = report
             extra_metrics[name + " macro f1"] = report["macro avg"]["f1-score"]
             extra_metrics[name + " weighted f1"] = report["weighted avg"]["f1-score"]
             try:
@@ -181,8 +176,8 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
             plt.clf()
             mlflow.log_artifact(file_name)
         return EvaluationResult(
-            weighted_f1=report["weighted avg"]["f1-score"],
-            macro_f1=report["macro avg"]["f1-score"],
+            weighted_f1=event_kind_report["weighted avg"]["f1-score"],
+            macro_f1=event_kind_report["macro avg"]["f1-score"],
             predictions=torch.cat(predictions).cpu(),
             extra_metrics=extra_metrics,
             extra_labels=all_labels,
