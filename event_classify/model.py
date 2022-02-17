@@ -70,18 +70,21 @@ class ElectraForEventClassification(ElectraPreTrainedModel):
         super().__init__(config)
         self.event_config = event_config
         if event_config.label_smoothing:
-            self.event_type_kind_loss = LabelSmoothingLoss(weight=EVENT_CLASS_WEIGHTS)
+            self.event_type_critereon = LabelSmoothingLoss(weight=EVENT_CLASS_WEIGHTS)
         else:
-            self.event_type_loss = nn.CrossEntropyLoss()
+            self.event_type_critereon = nn.CrossEntropyLoss(weight=EVENT_CLASS_WEIGHTS)
         self.property_loss = nn.CrossEntropyLoss()
         self.electra = ElectraModel(config)
         self.config = config
         self.event_type = ClassificationHead(config, num_labels=EVENT_PROPERTIES["categories"])
         self.iterative = ClassificationHead(config, num_labels=EVENT_PROPERTIES["iterative"])
-        if self.event_config.dynamic_loss_weighting and len(event_config.optimize_outputs) > 1:
-            self.multi_loss = MultiLossLayer(len(event_config.optimize_outputs))
+        if self.event_config.dynamic_loss_weighting and len(self.event_config.optimize_outputs) > 1:
+            self.multi_loss = MultiLossLayer(len(self.event_config.optimize_outputs))
         else:
-            self.loss_weights = nn.parameter.Parameter(torch.tensor(self.event_config.static_loss_weights))
+            self.loss_weights = nn.parameter.Parameter(
+                torch.tensor(self.event_config.static_loss_weights),
+                requires_grad=False
+            )
 
         self.thought_embedding = nn.Sequential(
             nn.Linear(config.hidden_size, config.hidden_size),
@@ -106,7 +109,6 @@ class ElectraForEventClassification(ElectraPreTrainedModel):
         self.mental_criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(77 / 23))
         self.iterative_criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(83 / 17))
         self.speech_criterion = nn.CrossEntropyLoss(weight=torch.tensor([1 / 0.52, 1 / 0.02, 1 / 0.45]))
-        self.event_type_critereon = nn.CrossEntropyLoss(weight=EVENT_CLASS_WEIGHTS)
 
         self.init_weights()
 
@@ -163,7 +165,7 @@ class ElectraForEventClassification(ElectraPreTrainedModel):
                     losses.append(torch.tensor(0).to(self.device))
                 if Output.ITERATIVE in self.event_config.optimize_outputs:
                     losses.append(torch.tensor(0).to(self.device))
-            if self.event_config.dynamic_loss_weighting and len(event_config.optimize_outputs) > 1:
+            if self.event_config.dynamic_loss_weighting and len(self.event_config.optimize_outputs) > 1:
                 loss = self.multi_loss(torch.stack(losses))
             else:
                 loss = torch.mean(torch.stack(losses) * self.loss_weights)
