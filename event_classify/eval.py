@@ -86,7 +86,7 @@ def evaluate(loader, model, device=None, out_file=None, save_confusion_matrix=Fa
                 selector = gold_labels.event_type != 0
             else:
                 selector = out.event_type != 0
-            all_predictions[name].append(torch.masked_select(getattr(out, name).cpu(), selector))
+            all_predictions[name].append(torch.masked_select(getattr(out, name).cpu(), selector.cpu()))
             if gold_labels is not None:
                 all_labels[name].append(getattr(gold_labels, name).cpu())
                 assert len(all_labels[name][-1]) == len(all_predictions[name][-1])
