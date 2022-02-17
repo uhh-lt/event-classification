@@ -1,7 +1,5 @@
 from transformers import ElectraTokenizer
 from typing import NamedTuple
-from .model import ElectraForEventClassification
-from .datasets import EventType
 from omegaconf import OmegaConf
 import os
 from typing import List
@@ -17,12 +15,16 @@ def get_config(hydra_path):
 
 
 def get_model(model_path: str):
+    from .model import ElectraForEventClassification
+    from .datasets import EventType
+    event_config = get_config(os.path.join(model_path, ".hydra"))
     tokenizer: ElectraTokenizer = ElectraTokenizer.from_pretrained(
         os.path.join(model_path, "tokenizer")
     )
     model = ElectraForEventClassification.from_pretrained(
         os.path.join(model_path, "best-model"),
         num_labels=4,
+        event_config=event_config,
     )
     return model, tokenizer
 

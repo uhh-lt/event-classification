@@ -111,7 +111,7 @@ def dprose(model_path: str, output_name: str, device: str = "cuda:0", special_to
         in_file = open(os.path.join("d-prose", name + ".txt"))
         full_text = "".join(in_file.readlines())
         splits = split_text(full_text)
-        # Sanity check, splitting should change text!
+        # Sanity check, splitting should not change text!
         assert full_text == "".join(split.text for split in splits)
         data = {
             "text": full_text,
@@ -161,7 +161,7 @@ def plain_text_file(model_path: str, in_name: str, output_name: str, device: str
         event_classify.preprocessing.use_gpu()
     out_file = open(output_name, "w")
     nlp = build_pipeline(Parser.SPACY)
-    in_file = open(in_name, "r")
+    in_file = open(in_name, "r", encoding="utf-8")
     full_text = "".join(in_file.readlines())
     splits = split_text(full_text)
     # Sanity check, splitting should change text!
@@ -185,8 +185,6 @@ def plain_text_file(model_path: str, in_name: str, output_name: str, device: str
                 ))
             annotation["spans"] = new_spans
         data["annotations"].extend(annotations)
-    towards_end = data["annotations"][-10]
-    print(full_text[towards_end["start"]:towards_end["end"]])
     dataset = JSONDataset(dataset_file=None, data=[data], include_special_tokens=special_tokens)
     loader = DataLoader(
         dataset,

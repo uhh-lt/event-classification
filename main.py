@@ -84,8 +84,6 @@ def train(train_loader, dev_loader, model, config: Config):
             if (len(f1s) > 0 and f1 > max(f1s)) or len(f1s) == 0:
                 model.save_pretrained("best-model")
             f1s.append(f1)
-            if scheduler is not None:
-                mlflow.log_metric("Learning Rate", scheduler.get_last_lr()[0], epoch)
             mlflow.log_metric("Weighted F1", evaluation_results.weighted_f1, epoch)
             mlflow.log_metric("Macro F1", evaluation_results.macro_f1, epoch)
             if len(f1s) > 0 and max(f1s) not in f1s[-config.patience :]:
