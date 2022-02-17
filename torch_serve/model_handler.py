@@ -36,7 +36,7 @@ class EventHandler(BaseHandler):
         self.config = get_config(os.path.join(model_dir, "config"))
         self.device = torch.device(properties.get("gpu_id") if torch.cuda.is_available() else "cpu")
         device_id = properties.get("gpu_id") if torch.cuda.is_available() else None
-        self.model, self.tokenizer = get_model(os.path.join(model_dir, "model"))
+        self.model, self.tokenizer = get_model(os.path.join(model_dir, "model"), config=self.config)
         self.model.to(self.device)
 
 

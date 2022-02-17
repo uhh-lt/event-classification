@@ -6,7 +6,6 @@ show_usage() {
     echo ""
     echo "Build model-archive using the config MODEL_NAME with weights from the WEIGHTS file."
     echo ""
-    echo "Control the bert-windowsize using the WINDOWSIZE environment variable"
 }
 
 
