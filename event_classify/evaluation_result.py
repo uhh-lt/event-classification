@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Dict
 
 import torch
 
@@ -9,9 +9,9 @@ class EvaluationResult():
     weighted_f1: Optional[float]
     macro_f1: Optional[float]
     predictions: torch.tensor
-    extra_metrics: dict[str, float] = field(default_factory=dict)
-    extra_predictions: dict[str, torch.tensor] = field(default_factory=dict)
-    extra_labels: dict[str, torch.tensor] = field(default_factory=dict)
+    extra_metrics: Dict[str, float] = field(default_factory=dict)
+    extra_predictions: Dict[str, torch.tensor] = field(default_factory=dict)
+    extra_labels: Dict[str, torch.tensor] = field(default_factory=dict)
 
     def get_prediction_lists(self):
         from .datasets import EventType, SpeechType
