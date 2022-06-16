@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 from omegaconf import MISSING
 from enum import Enum
 
@@ -12,13 +12,22 @@ class Output:
     EVENT_KIND = "event_kind"
 
 
+class DatasetKind(Enum):
+    """
+    Describes the kind of dataset we are using, either a CATMA repo or a JSON export.
+    """
+    CATMA = "catma"
+    JSON = "json"
+
+
 @dataclass
 class DatasetConfig():
     """
     Config details relevant to the dataset to use
     """
-    catma_uuid: str
-    catma_dir: str
+    kind: DatasetKind
+    catma_uuid: Optional[str]
+    catma_dir: Optional[str]
     in_distribution: bool
     special_tokens: bool
     excluded_collections: List[str]

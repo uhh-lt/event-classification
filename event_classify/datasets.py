@@ -208,9 +208,9 @@ class SpanAnnotation(NamedTuple):
         output = []
         # Provide prefix context
         try:
-            previous_end = annotation["start"] - 100
+            previous_end = max(annotation["start"] - 100, 0)
         except KeyError:
-            previous_end = annotation["spans"][0][0]
+            previous_end = max(annotation["spans"][0][0] - 100,  100)
         for start, end in selections:
             output.append(document[previous_end:start])
             if include_special_tokens:

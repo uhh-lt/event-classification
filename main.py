@@ -19,9 +19,9 @@ from transformers import ElectraTokenizer, ElectraForSequenceClassification
 import event_classify.datasets
 from event_classify.eval import evaluate
 from event_classify.model import ElectraForEventClassification
-from event_classify.config import Config, DatasetConfig
+from event_classify.config import Config, DatasetConfig, DatasetKind
 from event_classify.label_smoothing import LabelSmoothingLoss
-from event_classify.datasets import SimpleEventDataset, SpanAnnotation
+from event_classify.datasets import SimpleEventDataset, SimpleJSONEventDataset, SpanAnnotation
 
 def add_special_tokens(model, tokenizer):
     tokenizer.add_special_tokens(
@@ -92,20 +92,31 @@ def train(train_loader, dev_loader, model, config: Config):
 
 
 def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
-    project = catma.CatmaProject(
-        hydra.utils.to_absolute_path(config.catma_dir),
-        config.catma_uuid,
-        filter_intrinsic_markup=False,
-    )
+    if config.kind == DatasetKind.CATMA:
+        if config.catma_dir is None or config.catma_uuid is None:
+            raise ValueError("When chosing catma dataset kind, you must specify a catma_directory and catma_uuid!")
+        project = catma.CatmaProject(
+            hydra.utils.to_absolute_path(config.catma_dir),
+            config.catma_uuid,
+            filter_intrinsic_markup=False,
+        )
     if config.in_distribution:
         included_collections, _ = event_classify.datasets.get_annotation_collections(
             config.excluded_collections,
         )
-        dataset = SimpleEventDataset(
-            project,
-            included_collections,
-            include_special_tokens=config.special_tokens,
-        )
+        if config.kind == DatasetKind.CATMA.value:
+            dataset = SimpleEventDataset(
+                project,
+                included_collections,
+                include_special_tokens=config.special_tokens,
+            )
+        elif config.kind == DatasetKind.JSON.value:
+            dataset = SimpleJSONEventDataset(
+                os.path.join(hydra.utils.get_original_cwd(), "data/forTEXT-EvENT_Dataset-e6bc150"),
+                include_special_tokens=config.special_tokens,
+            )
+        else:
+            raise ValueError("Invalid dataset kind!")
         total = len(dataset)
         train_size = math.floor(total * 0.8)
         dev_size = (total - train_size) // 2

@@ -48,11 +48,11 @@ The JSON data will contain information besides the event types, these prediction
 The training script `main.py` can be configured via `conf/config.yaml`,
 individual parameters can be overridden using command line parameters like this: `python main.py label_smoothing=false`.
 
-Model weights and logs are saved to `outputs/<date>/<time>`, tensorboard logs are created in `runs`.
-Start the tensorboard like this: `tensorboard --logdir runs`.
+Model weights and logs are saved to `outputs/<date>/<time>`, mlflow logs are created in `runs`.
+Start the mlflow ui like this: `mlflow ui`, if the binary is not in your path and you set up a virtual environment you may need to run `venv/bin/mlflow ui`.
 
 
-## Setting up torchserve
+### Setting up torchserve
 
 If you want to perform inference via an HTTP API this can be done using torchserve. This provides the API that consumed by [the narrativity graph frontend](https://github.com/uhh-lt/narrativity-frontend).
 
