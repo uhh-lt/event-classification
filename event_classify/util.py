@@ -1,9 +1,9 @@
-from transformers import ElectraTokenizer
-from typing import NamedTuple, Optional
-from omegaconf import OmegaConf
-import os
-from typing import List
 import bisect
+import os
+from typing import List, NamedTuple, Optional
+
+from omegaconf import OmegaConf
+from transformers import ElectraTokenizer
 
 
 def get_config(hydra_path):
@@ -15,8 +15,9 @@ def get_config(hydra_path):
 
 
 def get_model(model_path: str, config: Optional[OmegaConf] = None):
-    from .model import ElectraForEventClassification
     from .datasets import EventType
+    from .model import ElectraForEventClassification
+
     if config is None:
         event_config = get_config(os.path.join(model_path, ".hydra"))
     else:
@@ -32,7 +33,9 @@ def get_model(model_path: str, config: Optional[OmegaConf] = None):
     return model, tokenizer
 
 
-def filter_sorted(data, start_value, end_value, key=lambda x: x, key_start=None, key_end=None):
+def filter_sorted(
+    data, start_value, end_value, key=lambda x: x, key_start=None, key_end=None
+):
     if key_start is None:
         key_start = key
     if key_end is None:
@@ -60,9 +63,9 @@ def smooth_bins(annotation_spans: List, smooth_character_span=1000) -> List[int]
         start_points.append(b)
         start_index = bisect.bisect_left(starts, b - smooth_character_span)
         end_index = bisect.bisect_right(ends, b + smooth_character_span)
-        annotation_spans_filtered = annotation_spans[start_index:end_index - 10]
+        annotation_spans_filtered = annotation_spans[start_index : end_index - 10]
         # The ends are not necessarily sorted (sorted by start), so let's check around here if there is anything we need to fix
-        for anno_span in annotation_spans[end_index - 10: end_index + 10]:
+        for anno_span in annotation_spans[end_index - 10 : end_index + 10]:
             if (anno_span["start"] > b - smooth_character_span) and (
                 anno_span["end"] < b + smooth_character_span
             ):
@@ -108,10 +111,19 @@ def split_text(text: str, allowed_split=".\n") -> List[SubDoc]:
             else:
                 current_split.append(segment + allowed_split)
         else:
-            out.append(SubDoc(text="".join(current_split), offset=sum(len(split.text) for split in out)))
+            out.append(
+                SubDoc(
+                    text="".join(current_split),
+                    offset=sum(len(split.text) for split in out),
+                )
+            )
             if i == len(segments) - 1:
                 current_split = [segment]
             else:
                 current_split = [segment + allowed_split]
-    out.append(SubDoc(text="".join(current_split), offset=sum(len(split.text) for split in out)))
+    out.append(
+        SubDoc(
+            text="".join(current_split), offset=sum(len(split.text) for split in out)
+        )
+    )
     return out

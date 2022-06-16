@@ -2,17 +2,22 @@
 import torch
 import torch.nn.functional as F
 
+
 class LabelSmoothingLoss(torch.nn.Module):
-    def __init__(self, smoothing: float = 0.1, 
-                 reduction="mean", weight=None):
+    def __init__(self, smoothing: float = 0.1, reduction="mean", weight=None):
         super(LabelSmoothingLoss, self).__init__()
-        self.smoothing   = smoothing
+        self.smoothing = smoothing
         self.reduction = reduction
-        self.weight    = weight
+        self.weight = weight
 
     def reduce_loss(self, loss):
-        return loss.mean() if self.reduction == 'mean' else loss.sum() \
-         if self.reduction == 'sum' else loss
+        return (
+            loss.mean()
+            if self.reduction == "mean"
+            else loss.sum()
+            if self.reduction == "sum"
+            else loss
+        )
 
     def linear_combination(self, x, y):
         return self.smoothing * x + (1 - self.smoothing) * y
@@ -30,4 +35,3 @@ class LabelSmoothingLoss(torch.nn.Module):
             log_preds, target, reduction=self.reduction, weight=self.weight
         )
         return self.linear_combination(loss / n, nll)
-

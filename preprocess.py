@@ -1,26 +1,31 @@
 """
 Preprocess raw documents to perform event classification on.
 """
-from typing import Optional
-import os
-import json
 import bisect
-from typing import List
+import json
+import os
 import re
+from typing import List, Optional
 
 import catma_gitlab as catma
-import typer
 import spacy
+import typer
 
-from event_classify.preprocessing import build_pipeline, use_gpu, get_annotation_dicts
 from event_classify.datasets import SimpleEventDataset
-from event_classify.parser import HermaParser, ParZuParser, Parser
+from event_classify.parser import HermaParser, Parser, ParZuParser
+from event_classify.preprocessing import build_pipeline, get_annotation_dicts, use_gpu
 
 app = typer.Typer()
 
 
 @app.command()
-def preprocess(text_file_paths: List[str], out_file_path: str, title: Optional[str] = None, gpu: bool = False, parser: Parser = typer.Option(Parser.SPACY)):
+def preprocess(
+    text_file_paths: List[str],
+    out_file_path: str,
+    title: Optional[str] = None,
+    gpu: bool = False,
+    parser: Parser = typer.Option(Parser.SPACY),
+):
     """
     Segment a set document into event spans based on verb occurrences.
 
@@ -37,18 +42,18 @@ def preprocess(text_file_paths: List[str], out_file_path: str, title: Optional[s
         full_text = "".join(in_file.readlines())
         doc = nlp(full_text)
         inferred_title, _ = os.path.splitext(os.path.basename(text_file_path))
-        data = {
-            "text": full_text,
-            "title": title or inferred_title,
-            "annotations": []
-        }
+        data = {"text": full_text, "title": title or inferred_title, "annotations": []}
         data["annotations"] = get_annotation_dicts(doc)
         document_list.append(data)
     json.dump(document_list, open(out_file_path, "w"))
 
 
 @app.command()
-def spans(input_sentence: str, display: bool = False, parser: Parser = typer.Option(Parser.SPACY)):
+def spans(
+    input_sentence: str,
+    display: bool = False,
+    parser: Parser = typer.Option(Parser.SPACY),
+):
     nlp = build_pipeline(parser)
     doc = nlp(input_sentence)
     if display:
@@ -62,8 +67,7 @@ def spans(input_sentence: str, display: bool = False, parser: Parser = typer.Opt
 
 
 def is_close(predict, target, limit=5):
-    return abs(predict[0] - target[0]) <= limit \
-        and abs(predict[1] - target[1]) <= limit
+    return abs(predict[0] - target[0]) <= limit and abs(predict[1] - target[1]) <= limit
 
 
 @app.command()
@@ -79,7 +83,7 @@ def eval(parser: Parser = typer.Option(Parser.SPACY)):
     text_spans = []
     for annotation in verwandlung_dataset:
         for span in annotation.spans:
-            new_text = re.subn("[^A-Za-z]", "", text[span[0]:span[1]])[0]
+            new_text = re.subn("[^A-Za-z]", "", text[span[0] : span[1]])[0]
             texts.append(new_text)
             text_spans.append(span)
         # gold_external_spans.add((annotation.start, annotation.end))
@@ -96,9 +100,15 @@ def eval(parser: Parser = typer.Option(Parser.SPACY)):
         # to_print = to_print + text[min_start - 100:min_start]
         previous_end = min_start - 100
         for r in event_ranges:
-            to_print = to_print + text[previous_end:r.start_char] + "<EVENT>" + text[r.start_char:r.end_char] + "</EVENT>"
+            to_print = (
+                to_print
+                + text[previous_end : r.start_char]
+                + "<EVENT>"
+                + text[r.start_char : r.end_char]
+                + "</EVENT>"
+            )
             previous_end = r.end_char
-        to_print = to_print + text[max_end:max_end + 100]
+        to_print = to_print + text[max_end : max_end + 100]
         print("=======")
         if len(event_ranges) > 1:
             print(to_print)
@@ -107,7 +117,11 @@ def eval(parser: Parser = typer.Option(Parser.SPACY)):
             match_ids = [i for i, t in enumerate(texts) if cleaned_text == t]
             match_spans = [text_spans[i] for i in match_ids]
             matches = [is_close((r.start_char, r.end_char), ms) for ms in match_spans]
-            matched_to = [i for i in match_ids if is_close((r.start_char, r.end_char), text_spans[i])]
+            matched_to = [
+                i
+                for i in match_ids
+                if is_close((r.start_char, r.end_char), text_spans[i])
+            ]
             if any(matches):
                 matched[matched_to[0]] = True
                 tp += 1

@@ -1,25 +1,26 @@
 from __future__ import annotations
-from collections import defaultdict, Counter
-from dataclasses import dataclass
+
 import copy
-from enum import Enum
-import json
-import os
-import logging
-from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Any
-from pathlib import Path
 import fnmatch
+import json
+import logging
+import os
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Tuple
+
+import catma_gitlab as catma
+import torch
+from torch.utils.data import Dataset
+from transformers import PreTrainedTokenizer
 
 import event_classify.preprocessing
 from event_classify.parser import Parser
 from event_classify.util import split_text
 
 from .evaluation_result import EvaluationResult
-import catma_gitlab as catma
-import torch
-from torch.utils.data import Dataset
-from transformers import PreTrainedTokenizer
-
 
 ALL_ANNOTATION_COLLECTIONS = [
     "Verwandlung_MV",
@@ -33,7 +34,7 @@ ALL_ANNOTATION_COLLECTIONS = [
     "Krambambuli_GS",
     "Krambambuli_MW",
     "Erdbeben_MW",
-    "Erdbeben_GS"
+    "Erdbeben_GS",
 ]
 
 
@@ -177,40 +178,60 @@ class SpanAnnotation(NamedTuple):
         else:
             labels = EventClassificationLabels(
                 event_type=torch.tensor([anno.event_type.value for anno in data]),
-                mental=torch.tensor([anno.mental for anno in data if anno.event_type != EventType.NON_EVENT], dtype=torch.float),
-                iterative=torch.tensor([anno.iterative for anno in data if anno.event_type != EventType.NON_EVENT], dtype=torch.float),
+                mental=torch.tensor(
+                    [
+                        anno.mental
+                        for anno in data
+                        if anno.event_type != EventType.NON_EVENT
+                    ],
+                    dtype=torch.float,
+                ),
+                iterative=torch.tensor(
+                    [
+                        anno.iterative
+                        for anno in data
+                        if anno.event_type != EventType.NON_EVENT
+                    ],
+                    dtype=torch.float,
+                ),
                 speech_type=torch.tensor([anno.speech_type.value for anno in data]),
-                thought_representation=torch.tensor([anno.thought_representation for anno in data], dtype=torch.float),
+                thought_representation=torch.tensor(
+                    [anno.thought_representation for anno in data], dtype=torch.float
+                ),
             )
         return encoded, labels, data
 
     @staticmethod
-    def build_special_token_text(annotation: catma.Annotation, document, include_special_tokens: bool = True):
+    def build_special_token_text(
+        annotation: catma.Annotation, document, include_special_tokens: bool = True
+    ):
         output = []
         plain_text = document.plain_text
         # Provide prefix context
         previous_end = annotation.start_point - 100
         for selection in merge_direct_neighbors(copy.deepcopy(annotation.selectors)):
-            output.append(plain_text[previous_end:selection.start])
+            output.append(plain_text[previous_end : selection.start])
             if include_special_tokens:
                 output.append(" <SE> ")
-            output.append(plain_text[selection.start:selection.end])
+            output.append(plain_text[selection.start : selection.end])
             if include_special_tokens:
                 output.append(" <EE> ")
             previous_end = selection.end
         # Provide suffix context
-        output.append(plain_text[previous_end:previous_end + 100])
+        output.append(plain_text[previous_end : previous_end + 100])
         return "".join(output)
 
     @staticmethod
-    def build_special_token_text_from_json(annotation: Dict, document: str, include_special_tokens: bool = True):
+    def build_special_token_text_from_json(
+        annotation: Dict, document: str, include_special_tokens: bool = True
+    ):
         selections = [tuple(span) for span in annotation["spans"]]
         output = []
         # Provide prefix context
         try:
             previous_end = max(annotation["start"] - 100, 0)
         except KeyError:
-            previous_end = max(annotation["spans"][0][0] - 100,  100)
+            previous_end = max(annotation["spans"][0][0] - 100, 100)
         for start, end in selections:
             output.append(document[previous_end:start])
             if include_special_tokens:
@@ -220,7 +241,7 @@ class SpanAnnotation(NamedTuple):
                 output.append(" <EE> ")
             previous_end = end
         # Provide suffix context
-        output.append(document[previous_end:previous_end + 100])
+        output.append(document[previous_end : previous_end + 100])
         return "".join(output)
 
     def output_dict(self, predictions):
@@ -229,13 +250,17 @@ class SpanAnnotation(NamedTuple):
             "end": self.end,
             "spans": self.spans,
             "predicted": predictions["event_types"],
-            "predicted_score": EventType.from_tag_name(predictions["event_types"]).get_narrativity_score(),
+            "predicted_score": EventType.from_tag_name(
+                predictions["event_types"]
+            ).get_narrativity_score(),
             "additional_predictions": predictions,
         }
 
 
 def simplify_representation(repr_list):
-    repr_list = [t.replace("_1", "").replace("_2", "_").replace("_3", "") for t in repr_list]
+    repr_list = [
+        t.replace("_1", "").replace("_2", "_").replace("_3", "") for t in repr_list
+    ]
     return repr_list
 
 
@@ -256,30 +281,34 @@ class PlainTextDataset(Dataset):
                 annotation["end"] += split.offset
                 new_spans = []
                 for span in annotation["spans"]:
-                    new_spans.append((
-                        span[0] + split.offset,
-                        span[1] + split.offset,
-                    ))
+                    new_spans.append(
+                        (
+                            span[0] + split.offset,
+                            span[1] + split.offset,
+                        )
+                    )
                 annotation["spans"] = new_spans
             for annotation in annotations:
-                self.all_annotations.append(SpanAnnotation(
-                    text=text[annotation["start"]:annotation["end"]],
-                    special_token_text=SpanAnnotation.build_special_token_text_from_json(
-                        annotation,
-                        text,
-                        include_special_tokens=True,
-                    ),
-                    iterative=None,
-                    speech_type=SpeechType.NONE,
-                    thought_representation=False,
-                    mental=None,
-                    event_type=None,
-                    document_text=text,
-                    # These annotate the start and end offsets in the document string
-                    start=annotation["start"],
-                    end=annotation["end"],
-                    spans=annotation["spans"],
-                ))
+                self.all_annotations.append(
+                    SpanAnnotation(
+                        text=text[annotation["start"] : annotation["end"]],
+                        special_token_text=SpanAnnotation.build_special_token_text_from_json(
+                            annotation,
+                            text,
+                            include_special_tokens=True,
+                        ),
+                        iterative=None,
+                        speech_type=SpeechType.NONE,
+                        thought_representation=False,
+                        mental=None,
+                        event_type=None,
+                        document_text=text,
+                        # These annotate the start and end offsets in the document string
+                        start=annotation["start"],
+                        end=annotation["end"],
+                        spans=annotation["spans"],
+                    )
+                )
 
     def __getitem__(self, i: int):
         return self.all_annotations[i]
@@ -304,19 +333,29 @@ class SimpleJSONEventDataset(Dataset):
             text = SimpleJSONEventDataset.get_full_text(path, name)
             for annotation in collection["gold_standard"]:
                 if len(annotation["properties"].get("mental", [])) > 1:
-                    logging.warning("Ignoring annotation with inconsistent 'mental' property")
+                    logging.warning(
+                        "Ignoring annotation with inconsistent 'mental' property"
+                    )
                     continue
                 try:
-                    special_token_text = SpanAnnotation.build_special_token_text_from_json(
-                        annotation,
-                        text,
-                        include_special_tokens=include_special_tokens,
+                    special_token_text = (
+                        SpanAnnotation.build_special_token_text_from_json(
+                            annotation,
+                            text,
+                            include_special_tokens=include_special_tokens,
+                        )
                     )
-                    simple_representations = simplify_representation(annotation["properties"]["representation_type"])
+                    simple_representations = simplify_representation(
+                        annotation["properties"]["representation_type"]
+                    )
                     speech_type = SpeechType.from_list(simple_representations)
-                    thought_representation = "thought_representation" in simple_representations
+                    thought_representation = (
+                        "thought_representation" in simple_representations
+                    )
                     event_type = EventType.from_tag_name(annotation["tag"])
-                    iterative = annotation["properties"].get("iterative", ["no"]) == ["yes"]
+                    iterative = annotation["properties"].get("iterative", ["no"]) == [
+                        "yes"
+                    ]
                     mental = annotation["properties"].get("mental", ["no"]) == ["yes"]
                     if event_type == EventType.NON_EVENT:
                         iterative = None
@@ -335,7 +374,9 @@ class SimpleJSONEventDataset(Dataset):
                         document_text=text,
                         start=start_annotation,
                         end=end_annotation,
-                        spans=merge_direct_neighbors_json(copy.deepcopy(annotation["spans"])),
+                        spans=merge_direct_neighbors_json(
+                            copy.deepcopy(annotation["spans"])
+                        ),
                     )
                     stats["speech_type"].update([speech_type])
                     stats["event_type"].update([event_type])
@@ -374,7 +415,13 @@ class SimpleEventDataset(Dataset):
 
     This dataset is generated from the CATMA repository which unfortunatly, for various reasons including privacy, can not simply be released.
     """
-    def __init__(self, project: catma.CatmaProject, annotation_collections: Iterable[str] = (), include_special_tokens: bool = True):
+
+    def __init__(
+        self,
+        project: catma.CatmaProject,
+        annotation_collections: Iterable[str] = (),
+        include_special_tokens: bool = True,
+    ):
         """
         Args:
             project: CatmaProject to load from
@@ -387,9 +434,11 @@ class SimpleEventDataset(Dataset):
         for collection in [project.ac_dict[coll] for coll in annotation_collections]:
             for annotation in collection.annotations:
                 if annotation.tag.name in ["Zweifelsfall", "change_of_episode"]:
-                    continue # We ignore these
+                    continue  # We ignore these
                 if len(annotation.properties.get("mental", [])) > 1:
-                    logging.warning("Ignoring annotation with inconsistent 'mental' property")
+                    logging.warning(
+                        "Ignoring annotation with inconsistent 'mental' property"
+                    )
                     continue
                 try:
                     special_token_text = SpanAnnotation.build_special_token_text(
@@ -397,11 +446,17 @@ class SimpleEventDataset(Dataset):
                         collection.text,
                         include_special_tokens=include_special_tokens,
                     )
-                    simple_representations = simplify_representation(annotation.properties["representation_type"])
+                    simple_representations = simplify_representation(
+                        annotation.properties["representation_type"]
+                    )
                     speech_type = SpeechType.from_list(simple_representations)
-                    thought_representation = "thought_representation" in simple_representations
+                    thought_representation = (
+                        "thought_representation" in simple_representations
+                    )
                     event_type = EventType.from_tag_name(annotation.tag.name)
-                    iterative = annotation.properties.get("iterative", ["no"]) == ["yes"]
+                    iterative = annotation.properties.get("iterative", ["no"]) == [
+                        "yes"
+                    ]
                     mental = annotation.properties.get("mental", ["no"]) == ["yes"]
                     if event_type == EventType.NON_EVENT:
                         iterative = None
@@ -417,7 +472,12 @@ class SimpleEventDataset(Dataset):
                         document_text=collection.text.plain_text,
                         start=annotation.start_point,
                         end=annotation.end_point,
-                        spans=[(s.start, s.end) for s in merge_direct_neighbors(copy.deepcopy(annotation.selectors))],
+                        spans=[
+                            (s.start, s.end)
+                            for s in merge_direct_neighbors(
+                                copy.deepcopy(annotation.selectors)
+                            )
+                        ],
                     )
                     stats["speech_type"].update([speech_type])
                     stats["event_type"].update([event_type])
@@ -445,14 +505,20 @@ class JSONDataset(Dataset):
     """
     Dataset based on JSON file created by our preprocessing script
     """
-    def __init__(self, dataset_file: Optional[str], data : Optional[list] = None, include_special_tokens: bool = True):
+
+    def __init__(
+        self,
+        dataset_file: Optional[str],
+        data: Optional[list] = None,
+        include_special_tokens: bool = True,
+    ):
         """
         Args:
             dataset_file: Path to json file created by preprocessing script
             data: Instead of a file path read data from this dict instead
         """
         super().__init__()
-        self.annotations : List[SpanAnnotation] = []
+        self.annotations: List[SpanAnnotation] = []
         self.documents: defaultdict[str, List[SpanAnnotation]] = defaultdict(list)
         if data is None:
             if dataset_file is None:
@@ -469,7 +535,7 @@ class JSONDataset(Dataset):
                 event_type = None
                 if annotation.get("prediction") is not None:
                     event_type = EventType.from_tag_name(annotation["predicted"])
-                text = full_text[annotation["start"]:annotation["end"]]
+                text = full_text[annotation["start"] : annotation["end"]]
                 span_anno = SpanAnnotation(
                     text=text,
                     special_token_text=special_token_text,
@@ -486,26 +552,28 @@ class JSONDataset(Dataset):
                 self.documents[title].append(span_anno)
                 self.annotations.append(span_anno)
 
-    def get_annotation_json(self, predictions: EvaluationResult) -> List[Dict[str, Any]]:
+    def get_annotation_json(
+        self, predictions: EvaluationResult
+    ) -> List[Dict[str, Any]]:
         out_data = []
         for title, document in self.documents.items():
-            out_doc = {
-                "title": title,
-                "text": None,
-                "annotations": []
-            }
+            out_doc = {"title": title, "text": None, "annotations": []}
             prediction_list = predictions.get_prediction_lists()
             assert len(prediction_list["event_types"]) == len(self.annotations)
             for i, annotation in enumerate(document):
                 if out_doc["text"] is None:
                     out_doc["text"] = annotation.document_text
                 out_doc["annotations"].append(
-                    annotation.output_dict({
-                        k: v[i].to_string() if hasattr(v[i], "to_string") else v[i]
-                        for k, v in prediction_list.items()
-                    })
+                    annotation.output_dict(
+                        {
+                            k: v[i].to_string() if hasattr(v[i], "to_string") else v[i]
+                            for k, v in prediction_list.items()
+                        }
+                    )
                 )
-            out_doc["annotations"] = list(sorted(out_doc["annotations"], key=lambda d: d["start"]))
+            out_doc["annotations"] = list(
+                sorted(out_doc["annotations"], key=lambda d: d["start"])
+            )
             out_data.append(out_doc)
         return out_data
 

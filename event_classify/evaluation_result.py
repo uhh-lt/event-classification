@@ -1,11 +1,11 @@
 from dataclasses import dataclass, field
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 import torch
 
 
 @dataclass
-class EvaluationResult():
+class EvaluationResult:
     weighted_f1: Optional[float]
     macro_f1: Optional[float]
     predictions: torch.tensor
@@ -15,6 +15,7 @@ class EvaluationResult():
 
     def get_prediction_lists(self):
         from .datasets import EventType, SpeechType
+
         event_types = [EventType(p.item()) for p in self.predictions]
         iterative = []
         mental = []
@@ -28,9 +29,13 @@ class EvaluationResult():
                 iterative.append(None)
                 mental.append(None)
         return {
-                "event_types": event_types,
-                "speech_type": [SpeechType(p.item()) for p in self.extra_predictions["speech_type"]],
-                "thought_representation": [bool(p.item()) for p in self.extra_predictions["thought_representation"]],
-                "iterative": iterative,
-                "mental": mental,
+            "event_types": event_types,
+            "speech_type": [
+                SpeechType(p.item()) for p in self.extra_predictions["speech_type"]
+            ],
+            "thought_representation": [
+                bool(p.item()) for p in self.extra_predictions["thought_representation"]
+            ],
+            "iterative": iterative,
+            "mental": mental,
         }

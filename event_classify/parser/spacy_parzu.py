@@ -9,6 +9,7 @@ from spacy.tokens import Token
 class ParZuParser(DependencyParser):
     def __init__(self, nlp, name, timeout=1000, **kwargs):
         import parzu_class as parzu
+
         options = parzu.process_arguments()
         self.parzu = parzu.Parser(options, timeout)
 
@@ -30,6 +31,8 @@ class ParZuParser(DependencyParser):
                 for token in parsed:
                     input_tokens[i]._.custom_dep = token["deprel"]
                     if token["head"] is not None and token["head"] > 0:
-                        input_tokens[i].head = input_tokens[int(token["head"]) - 1 + start_of_sent]
+                        input_tokens[i].head = input_tokens[
+                            int(token["head"]) - 1 + start_of_sent
+                        ]
                     i += 1
         return doc

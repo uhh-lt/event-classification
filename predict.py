@@ -2,31 +2,39 @@ import gc
 import json
 import math
 import os
-from typing import NamedTuple, List
+from typing import List, NamedTuple
 
 import catma_gitlab as catma
 import torch
+import typer
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
-import typer
 
+import event_classify.preprocessing
 from event_classify.datasets import (
     EventType,
-    SpeechType,
     JSONDataset,
     SimpleEventDataset,
     SpanAnnotation,
+    SpeechType,
 )
 from event_classify.eval import evaluate
 from event_classify.parser import Parser
-import event_classify.preprocessing
 from event_classify.preprocessing import build_pipeline
 from event_classify.util import get_model, split_text
 
 app = typer.Typer()
 
+
 @app.command()
-def main(segmented_json: str, out_path: str, model_path: str, device: str = "cuda:0", batch_size: int = 16, special_tokens: bool = True):
+def main(
+    segmented_json: str,
+    out_path: str,
+    model_path: str,
+    device: str = "cuda:0",
+    batch_size: int = 16,
+    special_tokens: bool = True,
+):
     """
     Add predictions to segmented json file.
 
@@ -46,7 +54,12 @@ def main(segmented_json: str, out_path: str, model_path: str, device: str = "cud
 
 
 @app.command()
-def gold_spans(model_path: str, device: str = "cuda:0", special_tokens: bool = True, dev: bool = False):
+def gold_spans(
+    model_path: str,
+    device: str = "cuda:0",
+    special_tokens: bool = True,
+    dev: bool = False,
+):
     project = catma.CatmaProject(
         ".",
         "CATMA_DD5E9DF1-0F5C-4FBD-B333-D507976CA3C7_EvENT_root",
@@ -90,7 +103,13 @@ def gold_spans(model_path: str, device: str = "cuda:0", special_tokens: bool = T
 
 
 @app.command()
-def dprose(model_path: str, output_name: str, device: str = "cuda:0", special_tokens: bool = True, batch_size: int = 8):
+def dprose(
+    model_path: str,
+    output_name: str,
+    device: str = "cuda:0",
+    special_tokens: bool = True,
+    batch_size: int = 8,
+):
     """
     Predict all of d-prose, applying segmentation in the same step.
     """
@@ -113,11 +132,7 @@ def dprose(model_path: str, output_name: str, device: str = "cuda:0", special_to
         splits = split_text(full_text)
         # Sanity check, splitting should not change text!
         assert full_text == "".join(split.text for split in splits)
-        data = {
-            "text": full_text,
-            "title": name,
-            "annotations": []
-        }
+        data = {"text": full_text, "title": name, "annotations": []}
         for split in splits:
             doc = nlp(split.text)
             annotations = event_classify.preprocessing.get_annotation_dicts(doc)
@@ -126,15 +141,19 @@ def dprose(model_path: str, output_name: str, device: str = "cuda:0", special_to
                 annotation["end"] += split.offset
                 new_spans = []
                 for span in annotation["spans"]:
-                    new_spans.append((
-                        span[0] + split.offset,
-                        span[1] + split.offset,
-                    ))
+                    new_spans.append(
+                        (
+                            span[0] + split.offset,
+                            span[1] + split.offset,
+                        )
+                    )
                 annotation["spans"] = new_spans
             data["annotations"].extend(annotations)
         towards_end = data["annotations"][-10]
-        print(full_text[towards_end["start"]:towards_end["end"]])
-        dataset = JSONDataset(dataset_file=None, data=[data], include_special_tokens=special_tokens)
+        print(full_text[towards_end["start"] : towards_end["end"]])
+        dataset = JSONDataset(
+            dataset_file=None, data=[data], include_special_tokens=special_tokens
+        )
         loader = DataLoader(
             dataset,
             batch_size=batch_size,
@@ -153,7 +172,14 @@ def dprose(model_path: str, output_name: str, device: str = "cuda:0", special_to
 
 
 @app.command()
-def plain_text_file(model_path: str, in_name: str, output_name: str, device: str = "cuda:0", special_tokens: bool = True, batch_size: int = 8):
+def plain_text_file(
+    model_path: str,
+    in_name: str,
+    output_name: str,
+    device: str = "cuda:0",
+    special_tokens: bool = True,
+    batch_size: int = 8,
+):
     """
     Predict a plain text file.
     """
@@ -166,11 +192,7 @@ def plain_text_file(model_path: str, in_name: str, output_name: str, device: str
     splits = split_text(full_text)
     # Sanity check, splitting should change text!
     assert full_text == "".join(split.text for split in splits)
-    data = {
-        "text": full_text,
-        "title": os.path.basename(in_name),
-        "annotations": []
-    }
+    data = {"text": full_text, "title": os.path.basename(in_name), "annotations": []}
     for split in splits:
         doc = nlp(split.text)
         annotations = event_classify.preprocessing.get_annotation_dicts(doc)
@@ -179,13 +201,17 @@ def plain_text_file(model_path: str, in_name: str, output_name: str, device: str
             annotation["end"] += split.offset
             new_spans = []
             for span in annotation["spans"]:
-                new_spans.append((
-                    span[0] + split.offset,
-                    span[1] + split.offset,
-                ))
+                new_spans.append(
+                    (
+                        span[0] + split.offset,
+                        span[1] + split.offset,
+                    )
+                )
             annotation["spans"] = new_spans
         data["annotations"].extend(annotations)
-    dataset = JSONDataset(dataset_file=None, data=[data], include_special_tokens=special_tokens)
+    dataset = JSONDataset(
+        dataset_file=None, data=[data], include_special_tokens=special_tokens
+    )
     loader = DataLoader(
         dataset,
         batch_size=batch_size,

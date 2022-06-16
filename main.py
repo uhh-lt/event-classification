@@ -2,26 +2,31 @@ import logging
 import math
 import os
 from collections import Counter
-from typing import List, Iterator, Optional
+from typing import Iterator, List, Optional
 
 import catma_gitlab as catma
 import hydra
+import mlflow
 import torch
 from hydra.core.hydra_config import HydraConfig
 from torch.nn.functional import cross_entropy
 from torch.optim import SGD
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, Dataset, random_split
-import mlflow
 from tqdm import tqdm
-from transformers import ElectraTokenizer, ElectraForSequenceClassification
+from transformers import ElectraForSequenceClassification, ElectraTokenizer
 
 import event_classify.datasets
-from event_classify.eval import evaluate
-from event_classify.model import ElectraForEventClassification
 from event_classify.config import Config, DatasetConfig, DatasetKind
+from event_classify.datasets import (
+    SimpleEventDataset,
+    SimpleJSONEventDataset,
+    SpanAnnotation,
+)
+from event_classify.eval import evaluate
 from event_classify.label_smoothing import LabelSmoothingLoss
-from event_classify.datasets import SimpleEventDataset, SimpleJSONEventDataset, SpanAnnotation
+from event_classify.model import ElectraForEventClassification
+
 
 def add_special_tokens(model, tokenizer):
     tokenizer.add_special_tokens(
@@ -64,7 +69,9 @@ def train(train_loader, dev_loader, model, config: Config):
                 losses.pop(0)
             if i % config.loss_report_frequency == 0 and config.dynamic_loss_weighting:
                 for x in range(len(config.optimize_outputs)):
-                    mlflow.log_metric(f"Sigma_{x + 1}", model.multi_loss.log_sigmas[x].item())
+                    mlflow.log_metric(
+                        f"Sigma_{x + 1}", model.multi_loss.log_sigmas[x].item()
+                    )
         if scheduler is not None:
             mlflow.log_metric("Learning Rate", scheduler.get_last_lr()[0], epoch)
             scheduler.step()
@@ -94,7 +101,9 @@ def train(train_loader, dev_loader, model, config: Config):
 def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
     if config.kind == DatasetKind.CATMA:
         if config.catma_dir is None or config.catma_uuid is None:
-            raise ValueError("When chosing catma dataset kind, you must specify a catma_directory and catma_uuid!")
+            raise ValueError(
+                "When chosing catma dataset kind, you must specify a catma_directory and catma_uuid!"
+            )
         project = catma.CatmaProject(
             hydra.utils.to_absolute_path(config.catma_dir),
             config.catma_uuid,
@@ -112,7 +121,9 @@ def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
             )
         elif config.kind == DatasetKind.JSON.value:
             dataset = SimpleJSONEventDataset(
-                os.path.join(hydra.utils.get_original_cwd(), "data/forTEXT-EvENT_Dataset-e6bc150"),
+                os.path.join(
+                    hydra.utils.get_original_cwd(), "data/forTEXT-EvENT_Dataset-e6bc150"
+                ),
                 include_special_tokens=config.special_tokens,
             )
         else:
@@ -127,7 +138,10 @@ def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
             generator=torch.Generator().manual_seed(13),
         )
     else:
-        included_collections, ood_collections = event_classify.datasets.get_annotation_collections(
+        (
+            included_collections,
+            ood_collections,
+        ) = event_classify.datasets.get_annotation_collections(
             config.excluded_collections,
         )
         in_distribution_dataset = SimpleEventDataset(
@@ -150,7 +164,9 @@ def get_datasets(config: DatasetConfig) -> tuple[Dataset]:
     return train_dataset, dev_dataset, test_dataset
 
 
-def build_loaders(tokenizer: ElectraTokenizer, datasets: List[Dataset], config: Config) -> Iterator[DataLoader]:
+def build_loaders(
+    tokenizer: ElectraTokenizer, datasets: List[Dataset], config: Config
+) -> Iterator[DataLoader]:
     for ds in datasets:
         if ds:
             yield DataLoader(
@@ -170,9 +186,7 @@ def print_target_weights(dataset):
     output_weights = []
     for event_type, value in sorted(counts.items(), key=lambda x: x[0].value):
         weight = 1 / value
-        logging.info(
-            f"Class: {event_type}, {weight}"
-        )
+        logging.info(f"Class: {event_type}, {weight}")
 
 
 @hydra.main(config_name="conf/config")

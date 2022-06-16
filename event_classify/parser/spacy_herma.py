@@ -24,7 +24,9 @@ class HermaParser(DependencyParser):
                     input_tokens.append(t)
             input_data += "\n"
         if HERMA_PATH is None:
-            raise ValueError("'HERMA_PATH' environment variable must be set to use the parser!")
+            raise ValueError(
+                "'HERMA_PATH' environment variable must be set to use the parser!"
+            )
         tokens = open(HERMA_PATH + "/Pipeline/01_tokens/text.txt", "w")
         for sent in doc.sents:
             for t in sent:
@@ -34,7 +36,12 @@ class HermaParser(DependencyParser):
             tokens.write("\n")
         tokens.close()
         subprocess.run(
-            ["sh", "tag.sh", HERMA_PATH + "/Pipeline/01_tokens", HERMA_PATH + "/Pipeline/02_tags/"],
+            [
+                "sh",
+                "tag.sh",
+                HERMA_PATH + "/Pipeline/01_tokens",
+                HERMA_PATH + "/Pipeline/02_tags/",
+            ],
             cwd=HERMA_PATH + "/Tools/Tagger",
         )
         subprocess.run(
@@ -43,12 +50,17 @@ class HermaParser(DependencyParser):
                 "germalemma_lemmatize_conllx_fallback_dir.py",
                 HERMA_PATH + "/Pipeline/02_tags/Ensemble",
                 HERMA_PATH + "/Pipeline/03_lemmata",
-                "Vollformen_geschlossene_Wortklassen_final.txt"
+                "Vollformen_geschlossene_Wortklassen_final.txt",
             ],
             cwd=HERMA_PATH + "/Tools/Lemmatizer",
         )
         subprocess.run(
-            ["sh", "parse.sh", HERMA_PATH + "/Pipeline/03_lemmata", HERMA_PATH + "/Pipeline/04_parse"],
+            [
+                "sh",
+                "parse.sh",
+                HERMA_PATH + "/Pipeline/03_lemmata",
+                HERMA_PATH + "/Pipeline/04_parse",
+            ],
             cwd=HERMA_PATH + "/Tools/Parser",
         )
         i = 0

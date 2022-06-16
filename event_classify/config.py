@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from typing import List, Optional
-from omegaconf import MISSING
 from enum import Enum
+from typing import List, Optional
+
+from omegaconf import MISSING
 
 
 class Output:
@@ -16,15 +17,17 @@ class DatasetKind(Enum):
     """
     Describes the kind of dataset we are using, either a CATMA repo or a JSON export.
     """
+
     CATMA = "catma"
     JSON = "json"
 
 
 @dataclass
-class DatasetConfig():
+class DatasetConfig:
     """
     Config details relevant to the dataset to use
     """
+
     kind: DatasetKind
     catma_uuid: Optional[str]
     catma_dir: Optional[str]
@@ -34,19 +37,22 @@ class DatasetConfig():
 
 
 @dataclass
-class SchedulerConfig():
+class SchedulerConfig:
     """
     Configuration for the learning rate scheduler.
     """
+
     enable: bool
     # The number of epochs to scale the learning rate scheduler over
     epochs: int
 
+
 @dataclass
-class Config():
+class Config:
     """
     Config for the entire program, holding hyperparameters etc.
     """
+
     device: str
     optimize: str
     epochs: int

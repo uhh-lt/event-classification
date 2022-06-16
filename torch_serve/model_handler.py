@@ -1,22 +1,19 @@
-import os
-import itertools
 import io
+import itertools
+import os
 
+import spacy
 import torch
 from torch.utils.data import DataLoader
-from ts.torch_handler.base_handler import BaseHandler
 from transformers import BertTokenizer, ElectraTokenizer
 from transformers.models.bert import BasicTokenizer
-import spacy
+from ts.torch_handler.base_handler import BaseHandler
 
 import event_classify.preprocessing
-from event_classify.datasets import (
-    JSONDataset,
-    SpanAnnotation,
-)
+from event_classify.datasets import JSONDataset, SpanAnnotation
 from event_classify.eval import evaluate
-from event_classify.preprocessing import build_pipeline
 from event_classify.parser import Parser
+from event_classify.preprocessing import build_pipeline
 from event_classify.util import get_config, get_model, split_text
 
 

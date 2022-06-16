@@ -2,8 +2,8 @@ import spacy
 from spacy.tokens import Doc, Token
 from thinc.api import require_gpu, set_gpu_allocator
 
-from event_classify.parser import HermaParser, ParZuParser, Parser
 import event_classify.segmentations
+from event_classify.parser import HermaParser, Parser, ParZuParser
 
 
 def build_pipeline(parser: Parser, language: str = "de") -> spacy.Language:
@@ -37,12 +37,14 @@ def get_annotation_dicts(doc: Doc):
         spans = []
         for subspan in event_ranges:
             spans.append((subspan.start_char, subspan.end_char))
-        annotations.append({
-            "start": min([start for start, end in spans]),
-            "end": max([end for start, end in spans]),
-            "spans": spans,
-            "predicted": None,
-        })
+        annotations.append(
+            {
+                "start": min([start for start, end in spans]),
+                "end": max([end for start, end in spans]),
+                "spans": spans,
+                "predicted": None,
+            }
+        )
     return annotations
 
 

@@ -2,9 +2,10 @@ import itertools
 import sys
 
 import spacy
-from spacy.tokens import Doc, Token
 from spacy.language import Language
-from event_classify.parser import ParZuParser, HermaParser
+from spacy.tokens import Doc, Token
+
+from event_classify.parser import HermaParser, ParZuParser
 
 Doc.set_extension("events", default=[])
 Token.set_extension("custom_dep", default=None)
@@ -40,8 +41,12 @@ def event_segmentation(doc):
     processed = set()
     for token in doc:
         out_ranges = []
-        if (is_english_verb(token.tag_) or is_german_verb(token.tag_)) and (token not in processed):
-            recursed = recurse_children(token, blacklist=list(processed), whitelist=[token])
+        if (is_english_verb(token.tag_) or is_german_verb(token.tag_)) and (
+            token not in processed
+        ):
+            recursed = recurse_children(
+                token, blacklist=list(processed), whitelist=[token]
+            )
             processed |= set(recursed)
             processed.add(token)
             span_indexes = [t.i for t in recursed] + [token.i]
@@ -75,7 +80,13 @@ def event_segmentation(doc):
 
 def recurse_children(token, blacklist=(), whitelist=()):
     # We need to whitelist the initial token as we want to stop at any new finite verb
-    return list(helper_recurse_children(list(token.rights) + list(token.lefts), blacklist, whitelist=list(whitelist) + [token]))
+    return list(
+        helper_recurse_children(
+            list(token.rights) + list(token.lefts),
+            blacklist,
+            whitelist=list(whitelist) + [token],
+        )
+    )
 
 
 def helper_recurse_children(tokens, blacklist=(), whitelist=()):
@@ -89,7 +100,9 @@ def helper_recurse_children(tokens, blacklist=(), whitelist=()):
             return
         children = t.children
         child_tags = [c.tag_ for c in children]
-        has_verb_child = any(is_german_verb(t) or is_english_verb(t) for t in child_tags)
+        has_verb_child = any(
+            is_german_verb(t) or is_english_verb(t) for t in child_tags
+        )
         is_verb = is_german_verb(t.tag_) or is_english_verb(t.tag_)
         # Skip any empty tokens
         if t.text.strip() == "":
