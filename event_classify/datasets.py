@@ -4,8 +4,10 @@ from dataclasses import dataclass
 import copy
 from enum import Enum
 import json
+import os
 import logging
 from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Any
+from pathlib import Path
 import fnmatch
 
 import event_classify.preprocessing
@@ -205,7 +207,10 @@ class SpanAnnotation(NamedTuple):
         selections = [tuple(span) for span in annotation["spans"]]
         output = []
         # Provide prefix context
-        previous_end = annotation["start"] - 100
+        try:
+            previous_end = annotation["start"] - 100
+        except KeyError:
+            previous_end = annotation["spans"][0][0]
         for start, end in selections:
             output.append(document[previous_end:start])
             if include_special_tokens:
@@ -283,9 +288,91 @@ class PlainTextDataset(Dataset):
         return len(self.all_annotations)
 
 
+class SimpleJSONEventDataset(Dataset):
+    def __init__(self, path: str, include_special_tokens: bool = True):
+        """
+        Args:
+            Path of the extracted annotation data as downlaoded from here: https://zenodo.org/record/6414926
+        """
+        super().__init__()
+        self.annotations: List[SpanAnnotation] = []
+        stats = defaultdict(Counter)
+        path = Path(path)
+        data = json.load(open(path / "Annotations_EvENT.json"))
+        for name, collection in data.items():
+            # Only use the gold standard for now
+            text = SimpleJSONEventDataset.get_full_text(path, name)
+            for annotation in collection["gold_standard"]:
+                if len(annotation["properties"].get("mental", [])) > 1:
+                    logging.warning("Ignoring annotation with inconsistent 'mental' property")
+                    continue
+                try:
+                    special_token_text = SpanAnnotation.build_special_token_text_from_json(
+                        annotation,
+                        text,
+                        include_special_tokens=include_special_tokens,
+                    )
+                    simple_representations = simplify_representation(annotation["properties"]["representation_type"])
+                    speech_type = SpeechType.from_list(simple_representations)
+                    thought_representation = "thought_representation" in simple_representations
+                    event_type = EventType.from_tag_name(annotation["tag"])
+                    iterative = annotation["properties"].get("iterative", ["no"]) == ["yes"]
+                    mental = annotation["properties"].get("mental", ["no"]) == ["yes"]
+                    if event_type == EventType.NON_EVENT:
+                        iterative = None
+                        mental = None
+                    start_annotation = min([span[0] for span in annotation["spans"]])
+                    end_annotation = max([span[1] for span in annotation["spans"]])
+                    annotation_text = text[start_annotation:end_annotation]
+                    span_anno = SpanAnnotation(
+                        text=annotation_text,
+                        special_token_text=special_token_text,
+                        event_type=event_type,
+                        iterative=iterative,
+                        speech_type=speech_type,
+                        thought_representation=thought_representation,
+                        mental=mental,
+                        document_text=text,
+                        start=start_annotation,
+                        end=end_annotation,
+                        spans=merge_direct_neighbors_json(copy.deepcopy(annotation["spans"])),
+                    )
+                    stats["speech_type"].update([speech_type])
+                    stats["event_type"].update([event_type])
+                    stats["thought_representation"].update([thought_representation])
+                    if event_type != EventType.NON_EVENT:
+                        stats["iterative"].update([iterative])
+                        stats["mental"].update([mental])
+                    self.annotations.append(span_anno)
+                except ValueError as e:
+                    logging.warning(f"Error parsing span annotation: {e}")
+        for field_name, variants in stats.items():
+            print(f"=== {field_name}")
+            total = sum(variants.values())
+            for variant_name, variant_count in variants.items():
+                print(f"\tWeight {variant_name}:", variant_count / total)
+
+    def __getitem__(self, i: int):
+        return self.annotations[i]
+
+    def __len__(self):
+        return len(self.annotations)
+
+    @staticmethod
+    def get_full_text(basepath: Path, text_name: str):
+        out = []
+        plain_texts_path = basepath / "Plain_Texts"
+        for file_name in os.listdir(plain_texts_path):
+            if file_name.endswith(text_name.replace(" ", "_") + ".txt"):
+                text_file = open(plain_texts_path / Path(file_name))
+                return "".join(text_file.readlines())
+
+
 class SimpleEventDataset(Dataset):
     """
     Dataset of all event spans with their features.
+
+    This dataset is generated from the CATMA repository which unfortunatly, for various reasons including privacy, can not simply be released.
     """
     def __init__(self, project: catma.CatmaProject, annotation_collections: Iterable[str] = (), include_special_tokens: bool = True):
         """
@@ -439,5 +526,14 @@ def merge_direct_neighbors(selectors):
     for i in range(len(selectors) - 1):
         if selectors[i].end == selectors[i + 1].start:
             selectors[i + 1].start = selectors[i].start
+            to_remove.append(i)
+    return [selector for i, selector in enumerate(selectors) if i not in to_remove]
+
+
+def merge_direct_neighbors_json(selectors):
+    to_remove = []
+    for i in range(len(selectors) - 1):
+        if selectors[i][1] == selectors[i + 1][0]:
+            selectors[i + 1][0] = selectors[i][0]
             to_remove.append(i)
     return [selector for i, selector in enumerate(selectors) if i not in to_remove]
