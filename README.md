@@ -3,7 +3,7 @@ Classify events into the four categories: "non-event", "change-of-state", "proce
 The spans of events are inferred using a rule-based system on top of a dependency parser.
 
 Three entry points to perform different tasks exist:
-* `main.py`, perform classification training on gold-span data from a CATMA project
+* `main.py`, perform classification training on gold-span data from JSON
     * e.g: `python main.py batch_size=16`
 * `preprocess.py` perform event segmentation, saving a JSON file of event spans suitable for inference using the predict script
     * e.g. `python preprocess.py text_1.txt text_2.txt all_texts.json`
@@ -16,7 +16,7 @@ To run this project you will need to install all dependencies in `requirements.t
 
 Initialize content of CATMA submodule: `git submodule update --init --recursive`
 
-(Optionally) create and activate a virtual environment to not install the dependencies globally:
+(Optionally) create and activate a virtual enviornment to not install the dependencies globally:
 ```
 python -m virtualenv venv
 source venv/bin/activate
@@ -26,9 +26,10 @@ Install all depenencies:
 ```
 pip -r requirements.txt
 ```
+If your machine does not have a cuda installed you will first have to comment out the line containing "cupy" in requirements.txt
 Install PyTorch by following the instructions on the [project's home page](https://pytorch.org/get-started/locally/).
 
-If your machine does not have a cuda installed you will first have to comment out the line containing "cupy" in requirements.txt
+Download the annotation data by runnning `./download.sh`.
 
 ## Usage
 
