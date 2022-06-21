@@ -10,26 +10,20 @@ Three entry points to perform different tasks exist:
 * `predict.py`, perform classification inference on an existing dataset JSON file using a pretrained model
     * e.g.: `python predict.py main all_texts.json all_texts_classified.json path_to_model`
 
-To run this project you will need to install all dependencies in `requirements.txt`, additionally you may need to install PyTorch.
-
 ## Setup
-
-Initialize content of CATMA submodule: `git submodule update --init --recursive`
-
-(Optionally) create and activate a virtual enviornment to not install the dependencies globally:
+The project uses poetry for dependency management. You can just run: 
 ```
-python -m virtualenv venv
-source venv/bin/activate
+poetry install 
 ```
 
-Install all depenencies:
-```
-pip -r requirements.txt
-```
-If your machine does not have a cuda installed you will first have to comment out the line containing "cupy" in requirements.txt
-Install PyTorch by following the instructions on the [project's home page](https://pytorch.org/get-started/locally/).
+If you want to make use of a GPU, you will need additonal depdencies, just run `poetry install -E gpu` instead.
 
-Download the annotation data by runnning `./download.sh`.
+Open a shell with the python packages and interpreter:
+```
+poetry shell
+```
+
+If cupy is taking what feels like forever to install/compile this is expected behaviour, you may chose to install a prebuilt binary instead. Check their [releases](https://github.com/cupy/cupy/releases) and pick a wheel that matches your cpython and cuda versions as well as your OS and architecture: run `poetry add <whl_url>`.
 
 ## Usage
 
@@ -45,6 +39,8 @@ The JSON data will contain information besides the event types, these prediction
 
 
 ### Training
+If you want to train a model you will first need to download the annotation data by runnning `./download.sh`.
+Alternativley, if you have access, you can retrieve the content of the CATMA submodule: `git submodule update --init --recursive`
 
 The training script `main.py` can be configured via `conf/config.yaml`,
 individual parameters can be overridden using command line parameters like this: `python main.py label_smoothing=false`.
