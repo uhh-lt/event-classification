@@ -55,7 +55,7 @@ If you want to perform inference via an HTTP API this can be done using torchser
 
 This guide assumes you have a fully trained model, you may download one from the releases tab on Github.
 
-- Make sure you have `torchserve` and the `torch-model-archiver` installed: `pip install torchserve torch-model-archiver`
+- Make sure you have `torchserve` and the `torch-model-archiver` installed: `poetry install -E torchserve`
 - Create a model archive using an existing model in model_directory  `./archive-model.sh <model_archive_name> <model_directory>`. This will create a `.mar` file in the current directory that is named according to specified model archive name.
 - You can now serve the model using `torchserve --foreground --model-store $(pwd) --models model_name=model_name.mar --ncs`
 

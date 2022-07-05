@@ -29,9 +29,12 @@ catma-gitlab = { git = "https://github.com/hatzel/catma_gitlab.git", rev = "5401
 scipy = "1.8.1"
 de-dep-news-trf = {url = "https://github.com/explosion/spacy-models/releases/download/de_dep_news_trf-3.3.0/de_dep_news_trf-3.3.0-py3-none-any.whl"}
 cupy = {version = "^10.5.0", optional = true}
+torchserve = {version = "^0.6.0", optional = true}
+torch-model-archiver = {version = "^0.6.0", optional = true}
 
 [tool.poetry.extras]
 gpu = ["cupy"]
+torchserve = ["torchserve", "torch-model-archiver"]
 
 [tool.poetry.dev-dependencies]
 black = "^22.3"
