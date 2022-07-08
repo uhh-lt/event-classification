@@ -3,12 +3,10 @@ Classify events into the four categories: "non-event", "change-of-state", "proce
 The spans of events are inferred using a rule-based system on top of a dependency parser.
 
 Three entry points to perform different tasks exist:
-* `main.py`, perform classification training on gold-span data from JSON
+* `main.py`, perform training on gold-span data from the JSON dataset
     * e.g: `python main.py batch_size=16`
-* `preprocess.py` perform event segmentation, saving a JSON file of event spans suitable for inference using the predict script
-    * e.g. `python preprocess.py text_1.txt text_2.txt all_texts.json`
-* `predict.py`, perform classification inference on an existing dataset JSON file using a pretrained model
-    * e.g.: `python predict.py main all_texts.json all_texts_classified.json path_to_model`
+* `predict.py`, perform classification inference on a pre-processed or plain-text file
+    * e.g.: `python predict.py plain-text-file <model_path> <input_txt_file> <output_json_file>`
 
 ## Setup
 The project uses poetry for dependency management. You can just run: 
@@ -37,6 +35,7 @@ If your system does not have a cuda device pass `--device=cpu` as the script cur
 
 The JSON data will contain information besides the event types, these predictions are however not of good quality and should not be used for any purposes.
 
+You may optionally use `preprocess.py` to cache the segmentation into verb phrases, e.g. `python preprocess.py text_1.txt text_2.txt all_texts.json`
 
 ### Training
 If you want to train a model you will first need to download the annotation data by runnning `./download.sh`.
