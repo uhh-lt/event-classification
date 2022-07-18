@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import torch
 from sklearn.metrics import classification_report
 
-from event_classify.datasets import EventType
+from event_classify.event_types import EventType
 from event_classify.eval import plot_confusion_matrix
 
 data_gold = json.load(open(sys.argv[1], "r"))

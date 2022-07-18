@@ -105,6 +105,21 @@ reference = "54011e3f"
 resolved_reference = "54011e3f1c8561f4f00e633cfb249aad584289d9"
 
 [[package]]
+name = "catma-py"
+version = "1.2.0"
+description = "A suite of classes and functions to make Python scripts interoperable with CATMA"
+category = "main"
+optional = false
+python-versions = ">=3.8"
+develop = false
+
+[package.source]
+type = "git"
+url = "https://github.com/hatzel/catma-py.git"
+reference = "eacc5c"
+resolved_reference = "eacc5c0e270d3bd53a0794f0e5d3c770b7aabd5c"
+
+[[package]]
 name = "certifi"
 version = "2022.6.15"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -1648,11 +1663,12 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-
 
 [extras]
 gpu = ["cupy"]
+torchserve = ["torchserve", "torch-model-archiver"]
 
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<3.11"
-content-hash = "478bf19d50f5a63650af3856578764bc92903d2dd8637ae4f31081b18710698f"
+content-hash = "2afe6164e920da1fc7dd411905e5c34d6e1396781b803a5c90053fcb82581b2f"
 
 [metadata.files]
 alembic = [
@@ -1721,6 +1737,7 @@ catalogue = [
     {file = "catalogue-2.0.7.tar.gz", hash = "sha256:535d33ae79ebd21ca298551d85da186ae8b8e1df36b0fb0246da774163ec2d6b"},
 ]
 catma-gitlab = []
+catma-py = []
 certifi = [
     {file = "certifi-2022.6.15-py3-none-any.whl", hash = "sha256:fe86415d55e84719d75f8b69414f6438ac3547d2078ab91b67e779ef69378412"},
     {file = "certifi-2022.6.15.tar.gz", hash = "sha256:84c85a9078b11105f04f3036a9482ae10e4621616db313fe045dd24743a0820d"},

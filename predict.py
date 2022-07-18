@@ -12,12 +12,12 @@ from tqdm import tqdm
 
 import event_classify.preprocessing
 from event_classify.datasets import (
-    EventType,
     JSONDataset,
     SimpleEventDataset,
     SpanAnnotation,
     SpeechType,
 )
+from event_classify.event_types import EventType
 from event_classify.eval import evaluate
 from event_classify.parser import Parser
 from event_classify.preprocessing import build_pipeline
@@ -221,11 +221,18 @@ def plain_text_file(
     model.to(device)
     evaluation_result = evaluate(loader, model, device=device)
     # We only pass in one document, so we only use [0]
-    data = dataset.get_annotation_json(evaluation_result)[0]
-    json.dump(data, out_file)
-    out_file.flush()
-    out_file.write("\n")
-    out_file.flush()
+    if output_name.endswith(".tei"):
+        data = dataset.get_annotation_tei(evaluation_result)[0]
+        out_file.write(data)
+        out_file.flush()
+        out_file.write("\n")
+        out_file.flush()
+    else:
+        data = dataset.get_annotation_json(evaluation_result)[0]
+        json.dump(data, out_file)
+        out_file.flush()
+        out_file.write("\n")
+        out_file.flush()
 
 
 if __name__ == "__main__":

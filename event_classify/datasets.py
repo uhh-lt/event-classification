@@ -19,6 +19,7 @@ from transformers import PreTrainedTokenizer
 import event_classify.preprocessing
 from event_classify.parser import Parser
 from event_classify.util import split_text
+from event_classify.event_types import EventType
 
 from .evaluation_result import EvaluationResult
 
@@ -61,64 +62,6 @@ class EventClassificationLabels:
         for member in new.__dataclass_fields__:
             setattr(new, member, getattr(new, member).to(device))
         return new
-
-
-class EventType(Enum):
-    NON_EVENT = 0
-    CHANGE_OF_STATE = 1
-    PROCESS = 2
-    STATIVE_EVENT = 3
-
-    def to_onehot(self):
-        out = torch.zeros(4)
-        out[self.value] = 1.0
-        return out
-
-    def get_narrativity_ordinal(self):
-        if self == EventType.NON_EVENT:
-            return 0
-        elif self == EventType.STATIVE_EVENT:
-            return 1
-        elif self == EventType.PROCESS:
-            return 2
-        elif self == EventType.CHANGE_OF_STATE:
-            return 3
-
-    @staticmethod
-    def from_tag_name(name: str):
-        if name == "non_event":
-            return EventType.NON_EVENT
-        if name == "change_of_state":
-            return EventType.CHANGE_OF_STATE
-        if name == "process":
-            return EventType.PROCESS
-        if name == "stative_event":
-            return EventType.STATIVE_EVENT
-        raise ValueError(f"Invalid Event variant {name}")
-
-    def get_narrativity_score(self):
-        if self == EventType.NON_EVENT:
-            return 0
-        if self == EventType.CHANGE_OF_STATE:
-            return 7
-        if self == EventType.PROCESS:
-            return 5
-        if self == EventType.STATIVE_EVENT:
-            return 2
-        else:
-            raise ValueError("Unknown EventType")
-
-    def to_string(self) -> str:
-        if self == EventType.NON_EVENT:
-            return "non_event"
-        if self == EventType.CHANGE_OF_STATE:
-            return "change_of_state"
-        if self == EventType.PROCESS:
-            return "process"
-        if self == EventType.STATIVE_EVENT:
-            return "stative_event"
-        else:
-            raise ValueError("Unknown EventType")
 
 
 class SpeechType(Enum):
@@ -520,6 +463,7 @@ class JSONDataset(Dataset):
         super().__init__()
         self.annotations: List[SpanAnnotation] = []
         self.documents: defaultdict[str, List[SpanAnnotation]] = defaultdict(list)
+        self.full_texts: Dict[str, str] = {}
         if data is None:
             if dataset_file is None:
                 raise ValueError("Only one of dataset_file and data may be None")
@@ -549,6 +493,7 @@ class JSONDataset(Dataset):
                     end=annotation["end"],
                     spans=[(s[0], s[1]) for s in annotation["spans"]],
                 )
+                self.full_texts[title] = full_text
                 self.documents[title].append(span_anno)
                 self.annotations.append(span_anno)
 
@@ -576,6 +521,33 @@ class JSONDataset(Dataset):
             )
             out_data.append(out_doc)
         return out_data
+
+    def get_annotation_tei(
+        self, predictions: EvaluationResult
+    ) -> List[str]:
+        from event_classify.catma_tei import build_tagsets
+        from catma_py.catma import Annotation, TEIAnnotationWriter, Range
+        from io import BytesIO
+        tags, tagset = build_tagsets()
+        out_data = []
+        annotations = []
+        i = 0
+        out = []
+        for title, document in self.documents.items():
+            data = BytesIO()
+            out_doc = {"title": title, "text": None, "annotations": []}
+            prediction_list = predictions.get_prediction_lists()["event_types"]
+            for annotation in document:
+                tag = tags[prediction_list[i].value]
+                anno = Annotation(tag)
+                ranges = [Range(start, end) for start, end in annotation.spans]
+                anno.ranges = ranges
+                annotations.append(anno)
+                i += 1
+            writer = TEIAnnotationWriter(len(self.full_texts[title]), "Automated Annotations", [tagset], [annotations])
+            writer.write_to_tei(outfile=data)
+            out.append(data.getvalue().decode("utf-8"))
+        return out
 
     def save_json(self, out_path: str, prediction: EvaluationResult):
         out_data = self.get_annotation_json(prediction)
